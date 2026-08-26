@@ -1,0 +1,812 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0f0e17">
+<title>Aron 36 — Apprendre par cœur</title>
+<style>
+  :root{
+    --bg:#0f0e17; --bg2:#161527; --card:#1c1b2e; --card2:#232134;
+    --line:#2e2c44; --txt:#ece9f7; --muted:#9b96b8;
+    --acc:#ff5e8a; --acc2:#a06bff;
+    --a1:#f5a524; --a2:#a78bfa; --a3:#f87171;
+    --ok:#34d399; --ko:#f87171;
+    --grad:linear-gradient(135deg,#ff5e8a,#a06bff);
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html{scroll-behavior:smooth}
+  body{
+    background:var(--bg); color:var(--txt);
+    font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    line-height:1.55; min-height:100vh; padding-bottom:90px;
+  }
+  header{
+    background:radial-gradient(1200px 400px at 20% -10%,rgba(160,107,255,.25),transparent),
+               radial-gradient(900px 300px at 90% -20%,rgba(255,94,138,.22),transparent),var(--bg);
+    border-bottom:1px solid var(--line); padding:26px 18px 18px; text-align:center;
+  }
+  header h1{font-size:1.55rem;letter-spacing:.3px}
+  header h1 em{font-style:normal;background:var(--grad);-webkit-background-clip:text;background-clip:text;color:transparent}
+  header p{color:var(--muted);font-size:.86rem;margin-top:4px;max-width:640px;margin-left:auto;margin-right:auto}
+  nav{
+    position:sticky;top:0;z-index:50;display:flex;gap:6px;overflow-x:auto;
+    background:rgba(15,14,23,.92);backdrop-filter:blur(8px);
+    border-bottom:1px solid var(--line);padding:10px 12px;
+    -webkit-overflow-scrolling:touch;
+  }
+  nav button{
+    flex:0 0 auto;border:1px solid var(--line);background:var(--bg2);color:var(--muted);
+    padding:8px 14px;border-radius:999px;font-size:.86rem;cursor:pointer;font-weight:600;
+    transition:all .15s;
+  }
+  nav button.on{background:var(--grad);color:#fff;border-color:transparent;box-shadow:0 4px 18px rgba(255,94,138,.35)}
+  main{max-width:760px;margin:0 auto;padding:18px 14px 40px}
+  .view{display:none;animation:fade .25s ease}
+  .view.on{display:block}
+  @keyframes fade{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+
+  .pills{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px}
+  .pill{
+    border:1px solid var(--line);background:var(--bg2);color:var(--txt);
+    padding:7px 14px;border-radius:999px;cursor:pointer;font-size:.85rem;font-weight:600;
+  }
+  .pill.on[data-act="1"]{background:rgba(245,165,36,.15);border-color:var(--a1);color:var(--a1)}
+  .pill.on[data-act="2"]{background:rgba(167,139,250,.15);border-color:var(--a2);color:var(--a2)}
+  .pill.on[data-act="3"]{background:rgba(248,113,113,.15);border-color:var(--a3);color:var(--a3)}
+  .pill.on[data-act="0"]{background:var(--grad);color:#fff;border-color:transparent}
+
+  .card{
+    background:var(--card);border:1px solid var(--line);border-radius:16px;
+    padding:14px 16px;margin-bottom:10px;
+  }
+  .qhead{display:flex;align-items:center;gap:10px}
+  .qnum{
+    flex:0 0 auto;width:34px;height:34px;border-radius:10px;display:grid;place-items:center;
+    font-weight:800;font-size:.9rem;
+  }
+  [data-act="1"] .qnum,[act="1"]{background:rgba(245,165,36,.16);color:var(--a1)}
+  [data-act="2"] .qnum{background:rgba(167,139,250,.16);color:var(--a2)}
+  [data-act="3"] .qnum{background:rgba(248,113,113,.16);color:var(--a3)}
+  .kw{
+    font-size:.78rem;font-weight:700;letter-spacing:.4px;text-transform:uppercase;
+    padding:3px 10px;border-radius:999px;border:1px dashed var(--line);color:var(--muted);
+  }
+  .qtext{margin-top:10px;font-size:.98rem}
+  .hidden-q .qtext{display:none}
+  .reveal-btn{
+    margin-top:10px;background:none;border:1px solid var(--line);color:var(--muted);
+    padding:6px 12px;border-radius:8px;font-size:.8rem;cursor:pointer;
+  }
+  .reveal-btn:hover{color:var(--txt);border-color:var(--muted)}
+
+  .togglebar{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;gap:10px;flex-wrap:wrap}
+  .switch{display:inline-flex;align-items:center;gap:8px;cursor:pointer;font-size:.85rem;color:var(--muted);user-select:none}
+  .switch input{display:none}
+  .track{width:40px;height:22px;border-radius:999px;background:var(--line);position:relative;transition:.2s}
+  .track::after{content:"";position:absolute;top:3px;left:3px;width:16px;height:16px;border-radius:50%;background:#fff;transition:.2s}
+  .switch input:checked + .track{background:var(--grad)}
+  .switch input:checked + .track::after{left:21px}
+  .smallnote{font-size:.78rem;color:var(--muted)}
+
+  .film-intro{font-style:italic;color:var(--muted);font-size:.9rem;margin-bottom:14px;padding-left:12px;border-left:3px solid var(--line)}
+  .scene{display:flex;gap:12px;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:12px 14px;margin-bottom:8px}
+  .scene .dot{
+    flex:0 0 auto;width:30px;height:30px;border-radius:50%;display:grid;place-items:center;
+    font-size:.8rem;font-weight:800;margin-top:2px;
+  }
+  [data-act="1"] .scene .dot{background:rgba(245,165,36,.16);color:var(--a1)}
+  [data-act="2"] .scene .dot{background:rgba(167,139,250,.16);color:var(--a2)}
+  [data-act="3"] .scene .dot{background:rgba(248,113,113,.16);color:var(--a3)}
+  .scene .img{font-size:.92rem}
+  .scene .ref{font-size:.8rem;color:var(--muted);margin-top:3px}
+  .scene .ref b{color:var(--txt);font-weight:600}
+
+  .day{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:14px 16px;margin-bottom:12px}
+  .day h3{font-size:.95rem;display:flex;align-items:center;gap:10px}
+  .day .dnum{
+    background:var(--grad);color:#fff;border-radius:8px;padding:2px 8px;font-size:.75rem;font-weight:800;
+  }
+  .day ul{list-style:none;margin-top:10px}
+  .day li{display:flex;gap:10px;align-items:flex-start;padding:5px 0;font-size:.9rem;color:var(--txt)}
+  .day li.done .lbl{color:var(--muted);text-decoration:line-through}
+  .day input[type=checkbox]{
+    appearance:none;width:20px;height:20px;flex:0 0 auto;border:2px solid var(--line);border-radius:6px;
+    cursor:pointer;position:relative;margin-top:2px;background:var(--bg2);
+  }
+  .day input[type=checkbox]:checked{background:var(--grad);border-color:transparent}
+  .day input[type=checkbox]:checked::after{content:"✓";position:absolute;inset:0;display:grid;place-items:center;font-weight:800;color:#fff;font-size:.8rem}
+  .rules{background:rgba(160,107,255,.07);border:1px solid rgba(160,107,255,.3);border-radius:16px;padding:14px 16px;margin-top:8px}
+  .rules h3{font-size:.9rem;margin-bottom:8px;color:var(--acc2)}
+  .rules ul{list-style:none}
+  .rules li{font-size:.86rem;padding:4px 0;color:var(--txt)}
+  .rules li::before{content:"→ ";color:var(--acc2)}
+
+  .modes{display:grid;grid-template-columns:1fr;gap:12px}
+  @media(min-width:620px){.modes{grid-template-columns:repeat(3,1fr)}}
+  .mode{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:16px;cursor:pointer;transition:transform .12s,border-color .12s}
+  .mode:hover{transform:translateY(-2px);border-color:var(--acc2)}
+  .mode .ico{font-size:1.5rem}
+  .mode h3{font-size:.95rem;margin:8px 0 4px}
+  .mode p{font-size:.8rem;color:var(--muted)}
+  .mode .subacts{display:flex;gap:6px;margin-top:10px;flex-wrap:wrap}
+  .mode .subacts button{
+    border:1px solid var(--line);background:var(--bg2);color:var(--txt);border-radius:8px;
+    padding:5px 10px;font-size:.78rem;cursor:pointer;font-weight:600;
+  }
+  .mode .subacts button:hover{border-color:var(--acc2)}
+
+  .session{display:none;background:var(--card);border:1px solid var(--line);border-radius:18px;padding:20px;margin-top:16px}
+  .session.on{display:block}
+  .pbar{height:7px;border-radius:99px;background:var(--line);overflow:hidden;margin-bottom:16px}
+  .pbar i{display:block;height:100%;background:var(--grad);width:0%;transition:width .25s;border-radius:99px}
+  .s-meta{font-size:.78rem;color:var(--muted);margin-bottom:10px;letter-spacing:.5px;text-transform:uppercase;font-weight:700}
+  .s-card{min-height:120px;display:flex;flex-direction:column;justify-content:center;text-align:center;padding:10px 4px}
+  .s-kw{font-size:1.7rem;font-weight:800;background:var(--grad);-webkit-background-clip:text;background-clip:text;color:transparent;margin-bottom:6px}
+  .s-q{font-size:1.08rem}
+  .s-hint{margin-top:12px;font-size:.9rem;color:var(--acc2);display:none}
+  .s-hint.on{display:block}
+  .s-actions{display:flex;gap:10px;margin-top:18px;flex-wrap:wrap;justify-content:center}
+  .btn{
+    border:none;border-radius:12px;padding:11px 20px;font-size:.9rem;font-weight:700;cursor:pointer;
+    transition:filter .12s;
+  }
+  .btn:hover{filter:brightness(1.12)}
+  .btn-ghost{background:var(--bg2);border:1px solid var(--line);color:var(--muted)}
+  .btn-grad{background:var(--grad);color:#fff}
+  .btn-ok{background:rgba(52,211,153,.14);color:var(--ok);border:1px solid rgba(52,211,153,.4)}
+  .btn-ko{background:rgba(248,113,113,.12);color:var(--ko);border:1px solid rgba(248,113,113,.4)}
+  .grade .btn{min-width:130px}
+  .opt{
+    display:block;width:100%;text-align:left;background:var(--bg2);border:1px solid var(--line);
+    color:var(--txt);border-radius:12px;padding:12px 14px;font-size:.9rem;cursor:pointer;margin-bottom:8px;
+  }
+  .opt:hover{border-color:var(--acc2)}
+  .opt.good{border-color:var(--ok);background:rgba(52,211,153,.12)}
+  .opt.bad{border-color:var(--ko);background:rgba(248,113,113,.12)}
+  .s-score{font-size:2.2rem;font-weight:800;margin:6px 0}
+  .s-msg{color:var(--muted);font-size:.9rem}
+  .kbd{font-size:.72rem;color:var(--muted);margin-top:14px}
+  .kbd b{border:1px solid var(--line);border-radius:5px;padding:1px 6px;font-weight:600;background:var(--bg2)}
+
+  .statgrid{display:grid;grid-template-columns:repeat(2,1fr);gap:12px;margin-bottom:14px}
+  @media(min-width:620px){.statgrid{grid-template-columns:repeat(4,1fr)}}
+  .stat{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px;text-align:center}
+  .stat .v{font-size:1.7rem;font-weight:800}
+  .stat .l{font-size:.72rem;color:var(--muted);text-transform:uppercase;letter-spacing:.6px;margin-top:2px}
+  .hist{display:flex;gap:8px;align-items:flex-end;height:120px;margin:8px 0 4px}
+  .hcol{flex:1;display:flex;flex-direction:column;justify-content:flex-end;text-align:center;gap:6px;height:100%}
+  .hbar{background:var(--grad);border-radius:8px 8px 4px 4px;min-height:4px;transition:height .3s}
+  .hcol.new .hbar{background:var(--line)}
+  .hcol .hn{font-size:.72rem;color:var(--muted)}
+  .hcol .hv{font-size:.8rem;font-weight:700}
+  .actbar{margin-bottom:10px}
+  .actbar .row{display:flex;justify-content:space-between;font-size:.8rem;color:var(--muted);margin-bottom:4px}
+  .actbar .bar{height:9px;border-radius:99px;background:var(--line);overflow:hidden}
+  .actbar .bar i{display:block;height:100%;border-radius:99px}
+  h2.sec{font-size:1.05rem;margin:20px 0 10px}
+  .btnline{display:flex;gap:10px;flex-wrap:wrap;margin-top:14px}
+
+  .empty{ text-align:center;padding:30px 10px;color:var(--muted);font-size:.9rem }
+  .empty .big{font-size:2rem;margin-bottom:8px}
+
+  footer{max-width:760px;margin:0 auto;padding:20px 16px 30px;color:var(--muted);font-size:.75rem;text-align:center;border-top:1px solid var(--line)}
+  footer a{color:var(--acc2)}
+  .toast{
+    position:fixed;bottom:20px;left:50%;transform:translateX(-50%) translateY(80px);
+    background:var(--grad);color:#fff;padding:10px 20px;border-radius:999px;font-size:.85rem;font-weight:600;
+    transition:transform .25s;z-index:99;box-shadow:0 8px 24px rgba(0,0,0,.4);
+  }
+  .toast.on{transform:translateX(-50%) translateY(0)}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Les <em>36 questions</em> d'Aron</h1>
+  <p>Apprendre par cœur avec les techniques les mieux prouvées par la science : rappel actif, répétition espacée, chunking et chaînes d'images. Ta progression est enregistrée dans ce navigateur.</p>
+</header>
+
+<nav id="nav">
+  <button data-v="questions" class="on">📋 Questions</button>
+  <button data-v="films">🎬 Films mentaux</button>
+  <button data-v="plan">📅 Plan 7 jours</button>
+  <button data-v="train">🧠 Entraînement</button>
+  <button data-v="stats">📊 Progression</button>
+</nav>
+
+<main>
+
+<!-- ═══════════════ VUE QUESTIONS ═══════════════ -->
+<section class="view on" id="view-questions">
+  <div class="togglebar">
+    <div class="pills" id="qpills">
+      <button class="pill on" data-act="0">Tout</button>
+      <button class="pill" data-act="1">🎭 Acte I · Le dîner</button>
+      <button class="pill" data-act="2">🔮 Acte II · Le cristal</button>
+      <button class="pill" data-act="3">🔥 Acte III · L'incendie</button>
+    </div>
+  </div>
+  <div class="togglebar">
+    <label class="switch">
+      <input type="checkbox" id="recit">
+      <span class="track"></span>
+      Mode récitation <span class="smallnote">(mot-clé seul → rappelle, puis révèle)</span>
+    </label>
+    <span class="smallnote" id="qcount"></span>
+  </div>
+  <div id="qlist"></div>
+</section>
+
+<!-- ═══════════════ VUE FILMS ═══════════════ -->
+<section class="view" id="view-films">
+  <p class="film-intro" id="fintro"></p>
+  <div class="pills" id="fpills">
+    <button class="pill on" data-act="1">🎭 Acte I · Le dîner</button>
+    <button class="pill" data-act="2">🔮 Acte II · Le cristal</button>
+    <button class="pill" data-act="3">🔥 Acte III · L'incendie</button>
+  </div>
+  <div id="flist"></div>
+  <div class="rules">
+    <h3>Comment dérouler un film</h3>
+    <ul>
+      <li>Visualise chaque scène 2-3 secondes, en mouvement, avec toi dedans.</li>
+      <li>Déroule le film 3 fois de suite, puis sans la liste.</li>
+      <li>Objectif : un acte entier en moins de 30 secondes dans ta tête.</li>
+      <li>Ancre numérique : ≤ 12 = dîner · 13-24 = cristal · ≥ 25 = incendie.</li>
+    </ul>
+  </div>
+</section>
+
+<!-- ═══════════════ VUE PLAN ═══════════════ -->
+<section class="view" id="view-plan">
+  <div id="planlist"></div>
+  <div class="rules">
+    <h3>⚡ Règles d'or</h3>
+    <ul>
+      <li>Rappelle-toi d'abord, vérifie ensuite — jamais l'inverse.</li>
+      <li>Récite toujours à voix haute (production effect, +10 % de rétention).</li>
+      <li>Se tromper puis corriger renforce plus que ne pas se tromper.</li>
+      <li>Sessions courtes et fréquentes &gt; une grosse session.</li>
+      <li>Dors bien : la consolidation se fait pendant le sommeil profond.</li>
+    </ul>
+  </div>
+</section>
+
+<!-- ═══════════════ VUE ENTRAÎNEMENT ═══════════════ -->
+<section class="view" id="view-train">
+  <div id="modepick">
+    <div class="modes">
+      <div class="mode" id="m-learn">
+        <div class="ico">📚</div>
+        <h3>Apprentissage</h3>
+        <p>Découvre une série dans l'ordre, avec indices lettre par lettre.</p>
+        <div class="subacts">
+          <button data-act="1">Acte I</button>
+          <button data-act="2">Acte II</button>
+          <button data-act="3">Acte III</button>
+        </div>
+      </div>
+      <div class="mode" id="m-review">
+        <div class="ico">⏱️</div>
+        <h3>Révision espacée</h3>
+        <p id="dueinfo">Les cartes arrivées à échéance, en désordre.</p>
+      </div>
+      <div class="mode" id="m-mixed">
+        <div class="ico">🎯</div>
+        <h3>Test croisé</h3>
+        <p>10 QCM dans les deux sens : numéro → question et question → numéro.</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="session" id="session"></div>
+</section>
+
+<!-- ═══════════════ VUE STATS ═══════════════ -->
+<section class="view" id="view-stats">
+  <div class="statgrid" id="statgrid"></div>
+  <h2 class="sec">Boîtes de Leitner</h2>
+  <p class="smallnote">Chaque réussite fait monter la carte d'une boîte (intervalle plus long). Un échec la renvoie en boîte 1.</p>
+  <div class="hist" id="hist"></div>
+  <h2 class="sec">Maîtrise par acte</h2>
+  <div id="actbars"></div>
+  <div class="btnline">
+    <button class="btn btn-ghost" id="b-export">⬆️ Exporter ma progression</button>
+    <button class="btn btn-ghost" id="b-import">⬇️ Importer</button>
+    <button class="btn btn-ko" id="b-reset">🗑️ Réinitialiser</button>
+  </div>
+</section>
+
+</main>
+
+<footer>
+  D'après Aron, Melinat, Aron, Vallone &amp; Bator (1997), <i>The Experimental Generation of Interpersonal Closeness</i>.<br>
+  Protocole complet : chacun votre tour, puis 4 minutes de regard dans les yeux. ❤️<br><br>
+  Techniques : testing effect (Roediger &amp; Karpicke 2006) · spacing (Cepeda 2006, Dunlosky 2013) · chunking (Miller 1956) · imagerie (Maguire 2003) · production (MacLeod 2010).
+</footer>
+
+<div class="toast" id="toast"></div>
+
+<script>
+/* ═══════════ DONNÉES ═══════════ */
+const DATA = [
+ {id:1, titre:"Acte I — Briser la glace", film:"Le Dîner",
+  pitch:"Tu donnes un dîner, et la soirée déraille peu à peu.",
+  questions:[
+   {n:1, mot:"Dîner", fr:"Si tu pouvais inviter n'importe qui au monde à dîner, qui inviterais-tu ?", img:"Tu dresses une table géante, un invité arrive."},
+   {n:2, mot:"Célèbre", fr:"Aimerais-tu devenir célèbre ? De quelle manière ?", img:"L'invité met des lunettes noires : c'est une star, on le reconnaît."},
+   {n:3, mot:"Téléphone", fr:"Avant de passer un appel téléphonique, te répètes-tu parfois ce que tu vas dire ? Pourquoi ?", img:"Avant de l'appeler pour l'inviter, tu répètes ton texte en bafouillant."},
+   {n:4, mot:"Journée parfaite", fr:"Comment serait pour toi une journée « parfaite » ?", img:"La journée entière défile en accéléré, dorée, parfaite."},
+   {n:5, mot:"Chanter", fr:"Quand as-tu chanté pour la dernière fois pour toi-même ? Pour quelqu'un d'autre ?", img:"Tout le monde se met à chanter en chœur."},
+   {n:6, mot:"90 ans", fr:"Si tu pouvais vivre jusqu'à 90 ans et garder soit l'esprit soit le corps d'une personne de 30 ans pendant les 60 dernières années, lequel choisirais-tu ?", img:"Un vieux de 90 ans déchire sa peau : corps de 30 ans dessous."},
+   {n:7, mot:"Intuition", fr:"As-tu une intuition secrète sur la façon dont tu vas mourir ?", img:"Il te chuchote à l'oreille comment tu vas mourir. Frisson."},
+   {n:8, mot:"Points communs", fr:"Cite trois choses que vous semblez avoir en commun, toi et ton partenaire.", img:"Trois fils rouges relient ton cœur au sien."},
+   {n:9, mot:"Gratitude", fr:"Pour quoi dans ta vie te sens-tu le plus reconnaissant(e) ?", img:"Tout le monde se lève pour te remercier, tu fonds en larmes de gratitude."},
+   {n:10, mot:"Éducation", fr:"Si tu pouvais changer quelque chose à la façon dont tu as été élevé(e), que changerais-tu ?", img:"Tes parents apparaissent et refont ton éducation à rebours."},
+   {n:11, mot:"4 minutes", fr:"Prends quatre minutes et raconte à ton partenaire l'histoire de ta vie avec le plus de détails possible.", img:"Un sablier de 4 minutes se retourne : raconte ta vie avant la fin."},
+   {n:12, mot:"Réveil", fr:"Si tu pouvais te réveiller demain matin avec une qualité ou une capacité en plus, laquelle serait-ce ?", img:"Tu te réveilles le lendemain avec un super-pouvoir."}
+  ]},
+ {id:2, titre:"Acte II — Valeurs et souvenirs", film:"La Boule de Cristal",
+  pitch:"Une diseuse de voyance déroule ta vie sous tes yeux.",
+  questions:[
+   {n:13, mot:"Cristal", fr:"Si une boule de cristal pouvait te dire la vérité sur toi-même, ta vie, le futur ou n'importe quoi d'autre, que voudrais-tu savoir ?", img:"Une boule de cristal fumante apparaît sur la table."},
+   {n:14, mot:"Rêve", fr:"Y a-t-il quelque chose dont tu rêves de faire depuis longtemps ? Pourquoi ne l'as-tu pas encore fait ?", img:"Dans la boule, le rêve que tu n'oses pas vivre s'envole."},
+   {n:15, mot:"Réussite", fr:"Quelle est la plus grande réussite de ta vie ?", img:"Tu reçois un trophée doré : ta plus grande réussite."},
+   {n:16, mot:"Amitié (valeur)", fr:"Qu'est-ce que tu valorises le plus dans une amitié ?", img:"Un ami te serre dans ses bras."},
+   {n:17, mot:"Souvenir précieux", fr:"Quel est ton souvenir le plus précieux ?", img:"Une photo dorée flotte hors de la boule."},
+   {n:18, mot:"Pire souvenir", fr:"Quel est ton pire souvenir ?", img:"La boule s'embrase et devient noire."},
+   {n:19, mot:"Mourir dans 1 an", fr:"Si tu savais que tu mourrais subitement dans un an, changerais-tu quelque chose à ta façon de vivre actuelle ? Pourquoi ?", img:"La boule affiche : « 1 an ». Que changerais-tu ?"},
+   {n:20, mot:"Amitié (sens)", fr:"Que signifie l'amitié pour toi ?", img:"Le mot AMITIÉ s'écrit en lettres géantes."},
+   {n:21, mot:"Amour", fr:"Quelle place tiennent l'amour et l'affection dans ta vie ?", img:"Les lettres se transforment en cœurs battants."},
+   {n:22, mot:"5 qualités", fr:"À tour de rôle, citez cinq choses que vous considérez comme des qualités positives chez l'autre.", img:"Vous vous dites 5 qualités à tour de rôle, en vous pointant."},
+   {n:23, mot:"Famille", fr:"À quel point ta famille est-elle proche et chaleureuse ? Penses-tu que ton enfance a été plus heureuse que celle de la plupart des gens ?", img:"Ta famille entière se serre autour d'un feu chaleureux."},
+   {n:24, mot:"Mère", fr:"Comment te sens-tu par rapport à ta relation avec ta mère ?", img:"Ta mère s'avance seule, vous vous regardez."}
+  ]},
+ {id:3, titre:"Acte III — Vulnérabilité", film:"L'Incendie",
+  pitch:"La nuit tombe, tout devient intense et nu.",
+  questions:[
+   {n:25, mot:"Nous", fr:"Faites, chacun à tour de rôle, trois affirmations vraies commençant par « nous ». Par exemple : « Nous sommes tous les deux dans cette pièce en train de… »", img:"Vous dites ensemble « NOUS SOMMES… » — le mot NOUS s'illumine."},
+   {n:26, mot:"Partager", fr:"Complète cette phrase : « Je voudrais avoir quelqu'un avec qui partager… »", img:"Tu complètes : « Je voudrais quelqu'un avec qui partager… »"},
+   {n:27, mot:"Savoir", fr:"Si tu allais devenir un ami proche de ton partenaire, dis-lui ce qui serait important qu'il sache sur toi.", img:"Tu lui remets une clé : voilà ce qu'il doit savoir de toi."},
+   {n:28, mot:"Honnête", fr:"Dis à ton partenaire ce que tu aimes chez lui. Sois totalement honnête : dis des choses que tu ne dirais pas à quelqu'un que tu viens de rencontrer.", img:"Tu lui dis des choses brutes, jamais dites à un inconnu."},
+   {n:29, mot:"Honte", fr:"Raconte à ton partenaire un moment embarrassant de ta vie.", img:"Un moment embarrassant rejoue en boucle, tu rougis."},
+   {n:30, mot:"Pleurs", fr:"Quand as-tu pleuré pour la dernière fois devant quelqu'un ? Seul(e) ?", img:"Les larmes coulent, devant l'autre puis seul."},
+   {n:31, mot:"Déjà", fr:"Dis à ton partenaire quelque chose que tu aimes déjà chez lui.", img:"Tu lui redis ce que tu aimes déjà chez lui."},
+   {n:32, mot:"Blague", fr:"Y a-t-il quelque chose de trop sérieux pour en plaisanter ?", img:"Un clown s'approche ; quelqu'un dit STOP : trop sérieux pour rire."},
+   {n:33, mot:"Regret", fr:"Si tu devais mourir ce soir sans possibilité de communiquer avec quiconque, de quoi regretterais-tu le plus de ne pas avoir dit à quelqu'un ? Pourquoi ne l'as-tu pas encore dit ?", img:"Minuit sonne : dernière chance de dire ce qu'on n'a jamais dit."},
+   {n:34, mot:"Incendie", fr:"Ta maison, avec tout ce qu'elle contient, prend feu. Après avoir sauvé tes proches et tes animaux, tu as le temps de faire un dernier saut pour sauver un seul objet. Lequel ? Pourquoi ?", img:"La maison brûle ! Proches sauvés, tu rattrapes UN objet au vol."},
+   {n:35, mot:"Deuil", fr:"De tous les membres de ta famille, dont la mort te bouleverserait le plus ? Pourquoi ?", img:"Dans la fumée : quel décès te briserait le plus ?"},
+   {n:36, mot:"Conseil", fr:"Partage un problème personnel et demande conseil à ton partenaire sur la façon dont il le gérerait. Puis demande-lui de te dire comment il pense que tu te sens par rapport à ce problème.", img:"Assis dans les cendres, tu exposes ton problème, il t'écoute et conseille."}
+  ]}
+];
+const ALL = DATA.flatMap(s => s.questions);
+const actOf = n => Math.floor((n - 1) / 12) + 1;
+const INTERVALS = [0, 1, 2, 4, 8, 16]; // jours par boîte (1..5)
+const DAY = 86400000;
+
+/* ═══════════ ÉTAT / STOCKAGE ═══════════ */
+function load(key, def) {
+  try { return JSON.parse(localStorage.getItem(key)) ?? def; } catch (e) { return def; }
+}
+function save(key, val) {
+  try { localStorage.setItem(key, JSON.stringify(val)); } catch (e) {}
+}
+let SRS = load("aron36.srs", { cards: {} });
+let PLANCHECKS = load("aron36.plan", {});
+
+function card(n) {
+  if (!SRS.cards[n]) SRS.cards[n] = { box: 1, due: 0 };
+  return SRS.cards[n];
+}
+function schedule(n, ok) {
+  const c = card(n);
+  c.box = ok ? Math.min(c.box + 1, 5) : 1;
+  c.due = Date.now() + INTERVALS[c.box] * DAY;
+  save("aron36.srs", SRS);
+}
+function dueCards() {
+  const now = Date.now();
+  return ALL.filter(q => SRS.cards[q.n] && SRS.cards[q.n].due <= now);
+}
+function fmtDelay(ms) {
+  if (ms <= 0) return "maintenant";
+  const h = ms / 3600000;
+  if (h < 1) return "dans " + Math.max(1, Math.round(h * 60)) + " min";
+  if (h < 24) return "dans " + (Math.round(h * 10) / 10).toString().replace(".", ",") + " h";
+  return "dans " + Math.round(h / 24) + " j";
+}
+
+/* ═══════════ NAVIGATION ═══════════ */
+document.querySelectorAll("#nav button").forEach(b => {
+  b.addEventListener("click", () => {
+    document.querySelectorAll("#nav button").forEach(x => x.classList.toggle("on", x === b));
+    document.querySelectorAll(".view").forEach(v => v.classList.toggle("on", v.id === "view-" + b.dataset.v));
+    window.scrollTo({ top: 0 });
+    if (b.dataset.v === "stats") renderStats();
+    if (b.dataset.v === "train") refreshDueInfo();
+  });
+});
+
+function toast(msg) {
+  const t = document.getElementById("toast");
+  t.textContent = msg;
+  t.classList.add("on");
+  clearTimeout(t._tid);
+  t._tid = setTimeout(() => t.classList.remove("on"), 2200);
+}
+
+/* ═══════════ VUE QUESTIONS ═══════════ */
+let qFilter = 0, recit = false;
+
+function renderQuestions() {
+  const list = document.getElementById("qlist");
+  const qs = qFilter === 0 ? ALL : DATA[qFilter - 1].questions;
+  document.getElementById("qcount").textContent = qs.length + " questions";
+  list.innerHTML = "";
+  qs.forEach(q => {
+    const d = document.createElement("div");
+    d.className = "card qcard" + (recit ? " hidden-q" : "");
+    d.dataset.act = actOf(q.n);
+    d.innerHTML =
+      '<div class="qhead"><span class="qnum">' + q.n + '</span>' +
+      '<span class="kw">' + q.mot + '</span>' +
+      '<span class="smallnote" style="margin-left:auto">boîte ' + (SRS.cards[q.n] ? SRS.cards[q.n].box : "–") + '</span></div>' +
+      '<div class="qtext">' + q.fr + '</div>' +
+      '<button class="reveal-btn">👁 Révéler</button>';
+    d.querySelector(".reveal-btn").addEventListener("click", () => d.classList.remove("hidden-q"));
+    list.appendChild(d);
+  });
+}
+document.querySelectorAll("#qpills .pill").forEach(p => {
+  p.addEventListener("click", () => {
+    document.querySelectorAll("#qpills .pill").forEach(x => x.classList.toggle("on", x === p));
+    qFilter = +p.dataset.act;
+    renderQuestions();
+  });
+});
+document.getElementById("recit").addEventListener("change", e => {
+  recit = e.target.checked;
+  renderQuestions();
+});
+
+/* ═══════════ VUE FILMS ═══════════ */
+let fAct = 1;
+function renderFilms() {
+  const s = DATA[fAct - 1];
+  document.getElementById("fintro").textContent =
+    "Film " + fAct + " — « " + s.film + " » : " + s.pitch + " (questions " + s.questions[0].n + " à " + s.questions[11].n + ").";
+  const list = document.getElementById("flist");
+  list.dataset.act = fAct;
+  list.innerHTML = "";
+  s.questions.forEach(q => {
+    const d = document.createElement("div");
+    d.className = "scene";
+    d.innerHTML = '<span class="dot">' + q.n + '</span><div>' +
+      '<div class="img">' + q.img + '</div>' +
+      '<div class="ref"><b>' + q.mot + '</b> → ' + q.fr + '</div></div>';
+    list.appendChild(d);
+  });
+}
+document.querySelectorAll("#fpills .pill").forEach(p => {
+  p.addEventListener("click", () => {
+    document.querySelectorAll("#fpills .pill").forEach(x => x.classList.toggle("on", x === p));
+    fAct = +p.dataset.act;
+    renderFilms();
+  });
+});
+
+/* ═══════════ VUE PLAN ═══════════ */
+const PLAN = [
+ {j:"Jour 1", t:"Acte I (~25 min)", tasks:[
+  "Lis les 12 questions de l'Acte I à voix haute (production effect).",
+  "Déroule le film « Le Dîner » 2 fois en visualisant chaque scène.",
+  "Entraînement → Apprentissage → Acte I (avec indices).",
+  "Écris les 12 mots-clés de mémoire sur une feuille blanche."]},
+ {j:"Jour 2", t:"Acte II + rappel Acte I (~25 min)", tasks:[
+  "Rappel à froid de l'Acte I : mots-clés puis questions, de mémoire.",
+  "Acte II à voix haute + film « La Boule de Cristal ».",
+  "Entraînement → Apprentissage → Acte II.",
+  "Révision espacée : les cartes de l'Acte I reviennent (J+1)."]},
+ {j:"Jour 3", t:"Acte III + rappel I & II (~25 min)", tasks:[
+  "Rappel à froid des Actes I et II.",
+  "Acte III à voix haute + film « L'Incendie ».",
+  "Entraînement → Apprentissage → Acte III.",
+  "Révision espacée des cartes dues."]},
+ {j:"Jour 4", t:"Assemblage complet (~20 min)", tasks:[
+  "Récite les 36 en ordre chronologique, à voix haute, sans aide.",
+  "Repère les trous et retravaille uniquement ceux-là.",
+  "Entraînement → Test croisé (10 QCM)."]},
+ {j:"Jour 5", t:"Consolidation légère (~10 min)", tasks:[
+  "Révision espacée seulement — ou repos complet.",
+  "Récite les 3 films mentalement avant de t'endormir."]},
+ {j:"Jour 6", t:"Test difficile (~15 min)", tasks:[
+  "Test croisé en mode aléatoire.",
+  "Technique Feynman : explique le protocole à quelqu'un, à voix haute.",
+  "Test à double sens : « question 22 ? » et « dîner → quel numéro ? »."]},
+ {j:"Jour 7", t:"Examen final (~10 min)", tasks:[
+  "Récite les 36, en ordre, sans aide, en moins de 5 minutes.",
+  "Programme la maintenance J+14 et J+30 (automatique via les boîtes)."]}
+];
+function renderPlan() {
+  const el = document.getElementById("planlist");
+  el.innerHTML = "";
+  PLAN.forEach((d, i) => {
+    const div = document.createElement("div");
+    div.className = "day";
+    let lis = "";
+    d.tasks.forEach((t, k) => {
+      const id = "p" + i + "-" + k;
+      lis += '<li class="' + (PLANCHECKS[id] ? "done" : "") + '">' +
+        '<input type="checkbox" id="' + id + '" ' + (PLANCHECKS[id] ? "checked" : "") + '>' +
+        '<span class="lbl">' + t + '</span></li>';
+    });
+    div.innerHTML = '<h3><span class="dnum">' + d.j + '</span> ' + d.t + '</h3><ul>' + lis + '</ul>';
+    div.querySelectorAll("input").forEach(inp => {
+      inp.addEventListener("change", () => {
+        PLANCHECKS[inp.id] = inp.checked;
+        save("aron36.plan", PLANCHECKS);
+        inp.parentElement.classList.toggle("done", inp.checked);
+      });
+    });
+    el.appendChild(div);
+  });
+}
+
+/* ═══════════ VUE ENTRAÎNEMENT ═══════════ */
+const SE = document.getElementById("session");
+let sess = null;
+
+function hint(text) {
+  return text.split(" ").map(w => /^[A-Za-zÀ-ÿ0-9]/.test(w) ? w[0] + "…" : w).join(" ");
+}
+function refreshDueInfo() {
+  const d = dueCards().length;
+  document.getElementById("dueinfo").textContent = d
+    ? d + " carte(s) arrivée(s) à échéance, en désordre."
+    : "Aucune carte due — reviens plus tard ou apprends une nouvelle série.";
+}
+function startSession(mode, act) {
+  let queue;
+  if (mode === "learn") queue = [...DATA[act - 1].questions];
+  else if (mode === "review") { queue = dueCards(); queue.sort(() => Math.random() - 0.5); }
+  else { // mixed : 10 QCM aléatoires
+    queue = [...ALL].sort(() => Math.random() - 0.5).slice(0, 10);
+  }
+  if (!queue.length) {
+    toast(mode === "review" ? "Rien à réviser pour l'instant 👌" : "Rien à faire");
+    return;
+  }
+  sess = { mode, queue, i: 0, ok: 0, ko: 0, revealed: false, answered: false };
+  document.getElementById("modepick").style.display = "none";
+  SE.classList.add("on");
+  renderStep();
+}
+function endSession() {
+  const { ok, ko, mode } = sess;
+  const total = ok + ko;
+  const pct = total ? Math.round(100 * ok / total) : 0;
+  const msgs = pct >= 90 ? "Excellent — monte d'une boîte et repose-toi. 😎"
+             : pct >= 70 ? "Solide. Les ratées reviennent demain, c'est le principe. 💪"
+             : "Parfait pour apprendre : chaque erreur renforce la trace. Reviens demain. 🌱";
+  SE.innerHTML =
+    '<div class="s-card"><div class="s-score">' + pct + ' %</div>' +
+    '<div class="s-msg">' + ok + ' réussies · ' + ko + ' ratées — ' + msgs + '</div>' +
+    '<div class="s-actions" style="margin-top:18px">' +
+    '<button class="btn btn-ghost" id="s-again">🔁 ' + (mode === "review" ? "Réviser encore" : "Rejouer") + '</button>' +
+    '<button class="btn btn-grad" id="s-home">✓ Terminer</button></div></div>';
+  document.getElementById("s-home").addEventListener("click", closeSession);
+  document.getElementById("s-again").addEventListener("click", () => {
+    if (mode === "review") startSession("review", 0);
+    else if (mode === "mixed") startSession("mixed", 0);
+    else startSession("learn", actOf(sess.queue[0].n));
+  });
+}
+function closeSession() {
+  sess = null;
+  SE.classList.remove("on");
+  document.getElementById("modepick").style.display = "";
+  refreshDueInfo();
+}
+
+function renderStep() {
+  const { mode, queue, i } = sess;
+  const q = queue[i];
+  document.querySelector('#view-train .pbar')?.remove();
+  const bar = document.createElement("div");
+  bar.className = "pbar";
+  bar.innerHTML = "<i></i>";
+  SE.innerHTML = "";
+  SE.appendChild(bar);
+
+  const meta = document.createElement("div");
+  meta.className = "s-meta";
+  meta.textContent = (mode === "learn" ? "Apprentissage" : mode === "review" ? "Révision espacée" : "Test croisé") +
+    " · " + (i + 1) + " / " + queue.length + " · Acte " + actOf(q.n);
+  SE.appendChild(meta);
+
+  if (mode === "mixed") renderQCM(q);
+  else renderRecall(q);
+  requestAnimationFrame(() => { bar.querySelector("i").style.width = (100 * i / queue.length) + "%"; });
+}
+
+function renderRecall(q) {
+  const box = document.createElement("div");
+  box.className = "s-card";
+  box.innerHTML =
+    '<div class="s-kw">' + q.mot + '</div>' +
+    '<div class="s-q smallnote">Question n° ' + q.n + ' — rappelle-la en entier, à voix haute.</div>' +
+    '<div class="s-hint" id="s-hint"></div>';
+  SE.appendChild(box);
+  const actions = document.createElement("div");
+  actions.className = "s-actions";
+  actions.innerHTML =
+    '<button class="btn btn-ghost" id="s-hintb">💡 Indice</button>' +
+    '<button class="btn btn-grad" id="s-reveal">👁 Révéler</button>';
+  SE.appendChild(actions);
+  const kbd = document.createElement("div");
+  kbd.className = "kbd";
+  kbd.innerHTML = "<b>espace</b> révéler · <b>1</b> réussi · <b>2</b> raté";
+  SE.appendChild(kbd);
+  document.getElementById("s-hintb").addEventListener("click", () => {
+    const h = document.getElementById("s-hint");
+    h.textContent = hint(q.fr);
+    h.classList.add("on");
+  });
+  document.getElementById("s-reveal").addEventListener("click", () => revealAnswer(q));
+}
+function revealAnswer(q) {
+  document.querySelector("#session .s-q").outerHTML = '<div class="s-q">' + q.fr + "</div>";
+  const actions = document.querySelector("#session .s-actions");
+  actions.innerHTML =
+    '<span class="smallnote" style="align-self:center">Tu l’avais ?</span>' +
+    '<button class="btn btn-ok" id="s-y">✓ Réussi</button>' +
+    '<button class="btn btn-ko" id="s-n">✗ Raté</button>';
+  actions.classList.add("grade");
+  document.getElementById("s-y").addEventListener("click", () => grade(true, q.n));
+  document.getElementById("s-n").addEventListener("click", () => grade(false, q.n));
+  sess.revealed = true;
+}
+function grade(ok, n) {
+  schedule(n, ok);
+  ok ? sess.ok++ : sess.ko++;
+  next();
+}
+function next() {
+  sess.i++;
+  if (sess.i >= sess.queue.length) {
+    document.querySelector("#session .pbar i").style.width = "100%";
+    setTimeout(endSession, 200);
+  } else renderStep();
+}
+
+function renderQCM(q) {
+  const dirNumToQ = Math.random() < 0.5;
+  const pool = [...ALL].filter(x => x.n !== q.n).sort(() => Math.random() - 0.5).slice(0, 3);
+  const opts = [q, ...pool].sort(() => Math.random() - 0.5);
+  const box = document.createElement("div");
+  box.className = "s-card";
+  if (dirNumToQ) {
+    box.innerHTML = '<div class="s-kw">n° ' + q.n + "</div>" +
+      '<div class="s-q smallnote">Quelle est la question <b>' + q.n + "</b> ? (" + q.mot + ")</div>";
+  } else {
+    box.innerHTML = '<div class="s-q">' + q.fr + "</div>" +
+      '<div class="s-q smallnote">→ Quel est son numéro ?</div>';
+  }
+  SE.appendChild(box);
+  const wrap = document.createElement("div");
+  wrap.className = "s-actions";
+  wrap.style.flexDirection = "column";
+  let goodBtn = null;
+  opts.forEach(o => {
+    const b = document.createElement("button");
+    b.className = "opt";
+    b.textContent = dirNumToQ ? o.fr : "n° " + o.n + " · " + o.mot;
+    if (o.n === q.n) goodBtn = b;
+    b.addEventListener("click", () => {
+      if (sess.answered) return;
+      sess.answered = true;
+      const good = o.n === q.n;
+      b.classList.add(good ? "good" : "bad");
+      if (!good && goodBtn) goodBtn.classList.add("good");
+      schedule(q.n, good);
+      good ? sess.ok++ : sess.ko++;
+      setTimeout(() => { sess.answered = false; next(); }, good ? 650 : 1600);
+    });
+    wrap.appendChild(b);
+  });
+  SE.appendChild(wrap);
+}
+
+document.getElementById("m-learn").addEventListener("click", e => {
+  const b = e.target.closest("[data-act]");
+  if (b) startSession("learn", +b.dataset.act);
+});
+document.getElementById("m-review").addEventListener("click", () => startSession("review", 0));
+document.getElementById("m-mixed").addEventListener("click", () => startSession("mixed", 0));
+
+document.addEventListener("keydown", e => {
+  if (!sess || sess.mode === "mixed") return;
+  if (e.code === "Space") {
+    e.preventDefault();
+    if (!sess.revealed) { revealAnswer(sess.queue[sess.i]); }
+  } else if (e.key === "1" && sess.revealed) grade(true, sess.queue[sess.i].n);
+  else if (e.key === "2" && sess.revealed) grade(false, sess.queue[sess.i].n);
+});
+
+/* ═══════════ VUE STATS ═══════════ */
+function renderStats() {
+  const now = Date.now();
+  const seen = ALL.filter(q => SRS.cards[q.n]);
+  const solid = seen.filter(q => SRS.cards[q.n].box >= 4).length;
+  const due = dueCards().length;
+  const nextDue = Math.min(...seen.filter(q => SRS.cards[q.n].due > now).map(q => SRS.cards[q.n].due), Infinity);
+
+  document.getElementById("statgrid").innerHTML =
+    stat(solid + "/36", "solides (boîte ≥ 4)") +
+    stat(seen.length + "/36", "vues au moins 1 fois") +
+    stat(String(due), "à réviser maintenant") +
+    stat(isFinite(nextDue) ? fmtDelay(nextDue - now) : "—", "prochaine échéance");
+
+  const boxes = [0, 0, 0, 0, 0];
+  seen.forEach(q => boxes[SRS.cards[q.n].box - 1]++);
+  const unseen = 36 - seen.length;
+  const mx = Math.max(...boxes, unseen, 1);
+  document.getElementById("hist").innerHTML =
+    boxes.map((v, i) =>
+      '<div class="hcol"><span class="hv">' + v + '</span>' +
+      '<div class="hbar" style="height:' + (100 * v / mx) + '%"></div>' +
+      '<span class="hn">B' + (i + 1) + " · +" + INTERVALS[i + 1] + "j</span></div>"
+    ).join("") +
+    '<div class="hcol new"><span class="hv">' + unseen + '</span>' +
+    '<div class="hbar" style="height:' + (100 * unseen / mx) + '%"></div>' +
+    '<span class="hn">non vues</span></div>';
+
+  const colors = ["var(--a1)", "var(--a2)", "var(--a3)"];
+  document.getElementById("actbars").innerHTML = DATA.map((s, i) => {
+    const sol = s.questions.filter(q => SRS.cards[q.n] && SRS.cards[q.n].box >= 4).length;
+    const pct = Math.round(100 * sol / 12);
+    return '<div class="actbar" data-act="' + s.id + '"><div class="row"><span>' + s.titre + "</span><span>" + pct + " %</span></div>" +
+      '<div class="bar"><i style="width:' + pct + "%;background:" + colors[i] + '"></i></div></div>';
+  }).join("");
+}
+function stat(v, l) {
+  return '<div class="stat"><div class="v">' + v + '</div><div class="l">' + l + "</div></div>";
+}
+document.getElementById("b-reset").addEventListener("click", () => {
+  if (confirm("Effacer toute la progression d'apprentissage ?")) {
+    SRS = { cards: {} };
+    save("aron36.srs", SRS);
+    renderStats(); renderQuestions();
+    toast("Progression réinitialisée");
+  }
+});
+document.getElementById("b-export").addEventListener("click", async () => {
+  const data = JSON.stringify({ srs: SRS, plan: PLANCHECKS });
+  try {
+    await navigator.clipboard.writeText(data);
+    toast("Progression copiée — colle-la quelque part (presque jamais nécessaire)");
+  } catch (e) {
+    prompt("Copie ta progression :", data);
+  }
+});
+document.getElementById("b-import").addEventListener("click", () => {
+  const raw = prompt("Colle ta progression exportée :");
+  if (!raw) return;
+  try {
+    const d = JSON.parse(raw);
+    if (d.srs) { SRS = d.srs; save("aron36.srs", SRS); }
+    if (d.plan) { PLANCHECKS = d.plan; save("aron36.plan", PLANCHECKS); renderPlan(); }
+    renderStats();
+    toast("Progression importée ✓");
+  } catch (e) { toast("Import invalide"); }
+});
+
+/* ═══════════ INIT ═══════════ */
+renderQuestions();
+renderFilms();
+renderPlan();
+refreshDueInfo();
+</script>
+</body>
+</html>
