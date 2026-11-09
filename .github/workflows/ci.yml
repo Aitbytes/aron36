@@ -35,6 +35,9 @@ jobs:
       - name: Lint
         run: npm run lint
 
+      - name: Traçabilité
+        run: npm run traceability:check
+
       - name: Format
         run: npm run format:check
 
