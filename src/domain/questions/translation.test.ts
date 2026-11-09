@@ -51,9 +51,9 @@ const EXPECTED_FRENCH_PROMPTS: readonly string[] = [
   'Si tu allais devenir un ami proche de ton partenaire, dis-lui ce qu’il serait important qu’il ou elle sache sur toi.',
   'Dis à ton partenaire ce que tu apprécies chez lui ou chez elle ; cette fois, sois vraiment honnête et dis des choses que tu ne dirais pas à quelqu’un que tu viens de rencontrer.',
   'Raconte à ton partenaire un moment embarrassant de ta vie.',
-  'Quand as-tu pleuré pour la dernière fois devant quelqu’un ? Et quand tu étais seul·e ?',
+  'Quand as-tu pleuré pour la dernière fois devant une autre personne ? Et seul·e ?',
   'Dis à ton partenaire quelque chose que tu apprécies déjà chez lui ou chez elle.',
-  'Y a-t-il, si tant est qu’il y en ait, des sujets trop sérieux pour qu’on en plaisante ?',
+  'Y a-t-il quoi que ce soit de trop sérieux pour qu’on en plaisante ?',
   'Si tu devais mourir ce soir sans pouvoir communiquer avec qui que ce soit, qu’est-ce que tu regretterais le plus de ne pas avoir dit à quelqu’un ? Pourquoi ne l’as-tu pas encore dit ?',
   'Ta maison, avec tout ce que tu possèdes, prend feu. Après avoir sauvé tes proches et tes animaux, tu as le temps de faire un dernier aller-retour sans danger pour sauver un seul objet. Lequel, et pourquoi ?',
   'De tous les membres de ta famille, quelle mort te bouleverserait le plus ? Pourquoi ?',
@@ -164,19 +164,19 @@ describe('questions corrigées (sens et langue)', () => {
   it('Q30 « Pleurs » : épicène, sans redondance « seul, sans personne »', () => {
     const text = promptFr(30);
     expect(text).toBe(
-      'Quand as-tu pleuré pour la dernière fois devant quelqu’un ? Et quand tu étais seul·e ?',
+      'Quand as-tu pleuré pour la dernière fois devant une autre personne ? Et seul·e ?',
     );
     expect(text).toContain('seul·e');
+    // Le lien avec les pleurs doit rester explicite (l’original est elliptique).
+    expect(text).toContain('pleuré');
     expect(text).not.toContain('sans personne');
   });
 
   it('Q32 « Blague » : le hedge « if anything » survit en français', () => {
     const text = promptFr(32);
-    expect(text).toBe(
-      'Y a-t-il, si tant est qu’il y en ait, des sujets trop sérieux pour qu’on en plaisante ?',
-    );
+    expect(text).toBe('Y a-t-il quoi que ce soit de trop sérieux pour qu’on en plaisante ?');
     // La réponse « rien » doit rester explicitement autorisée.
-    expect(text).toContain('si tant est qu’il y en ait');
+    expect(text).toContain('quoi que ce soit');
   });
 
   it('Q16 et Q22 : mots-clés pris dans la question, sans mot lexical commun', () => {

@@ -332,7 +332,7 @@ const ACT_III_SEEDS: readonly QuestionSeed[] = [
   {
     keyword: { fr: 'Pleurs', en: 'Crying' },
     prompt: {
-      fr: 'Quand as-tu pleuré pour la dernière fois devant quelqu’un ? Et quand tu étais seul·e ?',
+      fr: 'Quand as-tu pleuré pour la dernière fois devant une autre personne ? Et seul·e ?',
       en: 'When did you last cry in front of another person? By yourself?',
     },
     themeTags: ['émotions', 'vulnérabilité'],
@@ -348,7 +348,7 @@ const ACT_III_SEEDS: readonly QuestionSeed[] = [
   {
     keyword: { fr: 'Blague', en: 'Joking' },
     prompt: {
-      fr: 'Y a-t-il, si tant est qu’il y en ait, des sujets trop sérieux pour qu’on en plaisante ?',
+      fr: 'Y a-t-il quoi que ce soit de trop sérieux pour qu’on en plaisante ?',
       en: 'What, if anything, is too serious to be joked about?',
     },
     themeTags: ['humour', 'limites'],
