@@ -1,5 +1,8 @@
 # Architecture technique — Aron 36
 
+> État : Phase 2 terminée. Toute affirmation de ce document doit être
+> vérifiable ; la traçabilité est générée.
+>
 > Statut : **gelée par la Phase 1**. Ce document est la référence des Phases 2 à 5.
 > Il décrit les frontières, les contrats de données et les décisions techniques ;
 > il ne contient aucune implémentation métier.
@@ -102,7 +105,7 @@ src/
 │   ├── gamification/
 │   │   ├── types.ts             # XP, niveaux, séries, badges, quêtes, collection
 │   │   ├── xp.ts                # (Phase 2) barème et anti-farm
-│   │   ├── levels.ts            # (Phase 2) courbe et titres
+│   │   ├── level.ts             # (Phase 2) courbe et titres
 │   │   ├── streak.ts            # (Phase 2) série + gel
 │   │   ├── badges.ts            # (Phase 2) catalogue et évaluateur
 │   │   ├── quests.ts            # (Phase 2) tirage quotidien déterministe
@@ -320,7 +323,7 @@ domaine.
 | `PlayerState`       | `profile`, `totalXp`, `streak`, `badges`, `questBoard`, `collection`, `settings`                  | agrégat du joueur ; aucune donnée serveur                                |
 | `StreakState`       | `current`, `longest`, `lastActiveDay`, `freezes`, `frozenDays`                                    | `0 ≤ current ≤ longest` ; `freezes ≤ 2` ; jamais de perte de progression |
 | `BadgeState`        | `badgeId`, `unlockedAt`, `progress`, `target`                                                     | `0 ≤ progress ≤ target` ; déblocage irréversible                         |
-| `QuestBoard`        | `dayKey`, `seed`, `quests`, `rerollUsed`                                                          | exactement 3 quêtes ; un reroll par jour                                 |
+| `QuestBoard`        | `dayKey`, `seed`, `quests`                                                                        | exactement 3 quêtes, stables pour un même `dayKey`                       |
 | `CollectionState`   | `entries[]` (`questionId`, `rarity`, `obtainedAt`, `masteryTier`)                                 | au plus 36 entrées, une par question ; jamais retirée                    |
 | `PersistedProgress` | `schemaVersion`, `appVersion`, `savedAt`, `player`, `cards`, `hooks`, `reviewLogs`, `sessionLogs` | racine unique persistée ; voir § 5                                       |
 
@@ -421,19 +424,26 @@ interface Migration {
 
 ### 6.1 Algorithme retenu : FSRS-lite
 
-Deux composantes par carte :
+Deux composantes par carte, à ne jamais confondre :
 
 - **stabilité** `S` (`stabilityDays`) : mémoire estimée, en jours ;
+- **intervalle** `I` (`intervalDays`) : commande d'ordonnancement, en jours ;
 - **difficulté** `D` (`difficulty`) : intrinsèque à l'item, bornée 1..10.
 
-La rétention estimée au moment de la révision est :
+`S` mesure une trace mnésique, `I` désigne la prochaine échéance. Pendant
+`learning` / `relearning`, `I` n'est qu'un palier de quelques minutes et n'a
+aucune signification mnésique : c'est `S` qui porte la mémoire.
+
+La rétention estimée au moment de la révision se calcule donc sur la
+**stabilité** :
 
 ```
-R = targetRetention ^ (elapsedDays / intervalDays)
+R = targetRetention ^ (elapsedDays / max(S, 1e-6))
 ```
 
-avec `targetRetention = 0.9`. Pour une carte neuve (`intervalDays = 0`), `R = 0`
-par convention.
+bornée à `[0, 1]`, avec `targetRetention = 0.9`. Pour une carte jamais révisée
+(`lastReviewedAt = null`), `R = 0` par convention : sans trace, aucune rétention
+n'est démontrée.
 
 La difficulté est mise à jour avec un rappel vers la moyenne :
 
@@ -446,37 +456,51 @@ D' = clamp((1 − λ) × (D + δ(grade)) + λ × 5, 1, 10)     λ = 0.1
 
 **Carte neuve ou en apprentissage** (`learningStepsMinutes = [1, 10]`) :
 
-| Note    | Effet                                                                |
-| ------- | -------------------------------------------------------------------- |
-| `again` | palier 0 ; échéance `now + 1 min` ; `lapses` inchangé en phase `new` |
-| `hard`  | même palier ; échéance `now + 5 min`                                 |
-| `good`  | palier suivant ; dernier palier → graduation à `1 j`                 |
-| `easy`  | graduation immédiate à `4 j`                                         |
+| Note    | Effet                                                                           |
+| ------- | ------------------------------------------------------------------------------- |
+| `again` | palier 0 ; échéance `now + 1 min` ; `lapses` inchangé en phase `new`            |
+| `hard`  | même palier ; échéance `now + max(5 min, palier courant)`                       |
+| `good`  | palier suivant ; dernier palier → graduation à `graduatingIntervalDays` = `1 j` |
+| `easy`  | graduation immédiate à `easyIntervalDays` = `4 j`                               |
 
-**Carte en révision** (`phase = "review"`) :
+En phase `learning`, `hard` est borné par le palier courant (`max` de 5 min et du
+palier) : il ne saute ni ne rétrograde de palier.
+
+**Carte en révision** (`phase = "review"`) — chaque facteur de croissance est
+multiplié par `m(D) ∈ [0,5 ; 1,5]`, interpolation linéaire de `1,5` (`D = 1`,
+carte facile) à `0,5` (`D = 10`, carte difficile), valant `1` pour `D = 5,5` :
 
 ```
-hard  : I' = clamp(round(I × 1.2),                 I + 1, 180)
-good  : I' = clamp(round(I × (1.8 + 0.7 × (1−R))), I + 1, 180)
-easy  : I' = clamp(round(I × (2.5 + 0.7 × (1−R))), I + 2, 180)
-again : I' = 10 minutes, phase = "relearning", S' = max(0.5, S × 0.35), lapses + 1
+hard  : I' = clamp(round(I × 1,2 × m(D)),                  I + 1, min(180, plafond hard))
+good  : I' = clamp(round(I × (1,8 + 0,7 × (1−R)) × m(D)),  I + 1, 180)
+easy  : I' = clamp(round(I × (2,5 + 0,7 × (1−R)) × m(D)),  I + 2, 180)
+again : I' = 10 minutes, phase = "relearning", S' = max(0,5 ; S × 0,35), lapses + 1
 ```
 
-`dueAt = now + I' × DAY_MS`. Plus la révision est en retard (`R` faible), plus
-l'intervalle suivant croît : c'est la difficulté désirable (L9).
+Le plafond propre à `hard` vaut `maxIntervalDays × hardIntervalCeilingRatio`
+(50 % par défaut) : `hard` seul ne peut pas conduire une carte à
+`maxIntervalDays` par répétition. `dueAt = now + I' × DAY_MS` ; plus la révision
+est en retard (`R` faible), plus l'intervalle suivant croît : c'est la difficulté
+désirable (L9).
 
-**Réapprentissage** : `good` sur le dernier palier remet la carte en `review`
-avec un intervalle de consolidation d'au moins 1 jour ; `easy` fait de même avec
-au moins 2 jours ; `again` reste sur le palier de réapprentissage.
+**Réapprentissage** : `good` sur le dernier palier remet la carte en `review` à
+`relearningGraduatingIntervalDays` = **1 j** ; `easy` fait de même à **2 j**
+(`relearningGraduatingIntervalDays × 2`). Ces intervalles sont **fixés par la
+configuration et indépendants de la stabilité héritée** : après une chute, aucune
+rétention longue n'est prouvée, la carte doit regagner ses intervalles par des
+réussites espacées. `again` reste sur le palier de réapprentissage.
 
 ### 6.3 Monotonie et garanties
 
-Contrat testable, pour toute carte :
+Contrat testable, pour toute carte, y compris importée ou hors invariants :
 
-1. `grade ∈ {hard, good, easy}` ⇒ `next.dueAt > previous.dueAt` ;
-2. `grade ∈ {hard, good, easy}` ⇒ `next.intervalDays ≥ previous.intervalDays` ;
+1. `grade ∈ {hard, good, easy}` ⇒ `next.dueAt > previous.dueAt`, **toujours**
+   (y compris à saturation et sur un état importé) ;
+2. `grade ∈ {hard, good, easy}` ⇒
+   `next.intervalDays ≥ min(previous.intervalDays, maxIntervalDays)` : le plafond
+   prime sur un intervalle d'entrée hors bornes ;
 3. `previewIntervals` est croissant : `again ≤ hard ≤ good ≤ easy` en jours ;
-4. `I' ≤ maxIntervalDays` et `I' ≥ minimumReviewIntervalDays` après graduation ;
+4. `I' ≤ maxIntervalDays` ;
 5. `difficulty` reste dans `[1, 10]` ;
 6. aucune lecture d'horloge interne : `now` est un paramètre ;
 7. aucun aléa : pas de « fuzz » en v1 (`RandomPort` non injecté).
@@ -491,10 +515,16 @@ Une carte est maîtrisée si et seulement si :
 
 ```
 phase = "review"
-ET intervalDays ≥ 21
-ET consecutiveSuccesses ≥ 2
-ET reps ≥ 3
+ET I ≥ minIntervalDays (21)
+ET série de notes de qualité ≥ minConsecutiveSuccesses (2)
+ET révisions de qualité ≥ minReps (3)
 ```
+
+La **série** et le **nombre de révisions** portent sur des notes de **qualité**
+(`good`/`easy`), recalculées depuis les `ReviewLog` (un `hard` ou un `again`
+interrompt la série). `CardState.consecutiveSuccesses`, compteur de
+l'ordonnanceur sur toute note réussie (`hard`, `good`, `easy`), **n'entre pas**
+dans le critère de maîtrise.
 
 Une question est maîtrisée si sa carte l'est **et** qu'elle a été produite avec
 une précision ≥ 80 % dans au moins 3 directions distinctes (≥ 2 tentatives par
@@ -699,9 +729,8 @@ artificielle, pas d'incitation anxiogène).
   `target = min`, fenêtre calculée par `ClockPort` avec `SESSION_WINDOW_HOURS` ;
   `calibration` ⇒ `target = minAnswers`, progression = réponses dont l'écart
   est sous `maxGap`.
-- Un seul reroll par jour, sans pénalité ; les quêtes non terminées expirent
-  sans conséquence.
-- Aucune notification, aucun compte à rebours anxiogène.
+- Les quêtes non terminées expirent sans conséquence : aucune pénalité,
+  aucune notification, aucun compte à rebours anxiogène.
 
 ### 8.6 Collection des 36 cartes
 
@@ -727,30 +756,10 @@ atteignables"`.
 
 ## 9. Traçabilité apprentissage → code
 
-Chaque mécanisme de `PLAN.md` a un module, une interface et un test prévu. Les
-tests marqués « Phase 2/3/4 » sont à livrer par la phase correspondante ; aucun
-mécanisme n'est laissé sans preuve.
-
-| #   | Mécanisme                    | Module                    | Interface / donnée                                               | Test qui prouve                                                                                                                         |
-| --- | ---------------------------- | ------------------------- | ---------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
-| L1  | Rappel actif                 | `session`                 | `SessionItem` (`exerciseKind: production`), `SessionEngine`      | `session/builder.test.ts › "review ne produit que des productions"` ; `session/engine.test.ts › "révéler ne note pas"`                  |
-| L2  | Répétition espacée           | `srs`                     | `Scheduler.schedule`, `CardState`                                | `srs/scheduler.test.ts › "good augmente strictement l'échéance"`                                                                        |
-| L3  | Intervalle de séance         | `session`                 | `DEFAULT_SESSION_LIMITS`, `SessionConfig.maxItems/maxDurationMs` | `session/builder.test.ts › "plafonne le nombre d'items et la durée"`                                                                    |
-| L4  | Entrelacement                | `session`                 | `InterleavingDescriptor`, `InterleavingPolicy`                   | `session/builder.test.ts › "jamais 3 actes identiques consécutifs"`                                                                     |
-| L5  | Chunking hiérarchique        | `questions`, `mastery`    | `Act`, `positionInAct`, `ActMastery`                             | `questions/catalog.test.ts › "3 actes de 12"` ; `mastery/evaluator.test.ts › "acte II verrouillé"`                                      |
-| L6  | Double codage / imagerie     | `memory`, `session`       | `MemoryFilm`, `cue.kind = image`                                 | `memory/film.test.ts › "12 scènes, image non vide"` ; `session/directions.test.ts › "image → question"`                                 |
-| L7  | Méthode des liens            | `memory`                  | `FilmScene.transitionToNext`, mode `recitation`                  | `memory/film.test.ts › "transition non nulle sauf la dernière"`                                                                         |
-| L8  | Effet de production          | `session`, `application`  | `AnswerChannel`, `SpeechPort`, XP production                     | `gamification/xp.test.ts › "la discrimination rapporte ≤ 50 %"` ; `application/usecases/submitAnswer.test.ts › "canal oral journalisé"` |
-| L9  | Difficultés désirables       | `session`                 | `HintPolicy`, `revealedHints`, `hints`                           | `session/engine.test.ts › "indices révélés un par un, zéro au départ"`                                                                  |
-| L10 | Effet de génération          | `memory`                  | `PersonalHook`, `SaveHookInput`                                  | `memory/hooks.test.ts › "une accroche par question, 1..280 caractères"`                                                                 |
-| L11 | Auto-référence               | `session`                 | `SessionBuildContext.hooks`, `HintKind = personal-hook`          | `session/builder.test.ts › "l'accroche est réinjectée en indice"`                                                                       |
-| L12 | Métacognition                | `session`, `gamification` | `ConfidenceRating`, `PlayerMetrics.calibrationGap`               | `session/engine.test.ts › "confiance exigée avant révélation"` ; `gamification/metrics.test.ts › "écart de calibration borné"`          |
-| L13 | Feedback correctif           | `session`                 | `AnswerFeedback`, `ErrorSignal`                                  | `session/engine.test.ts › "le feedback contient réponse, image et signal"`                                                              |
-| L14 | Apprentissage de maîtrise    | `mastery`                 | `MasteryEvaluator`, `actUnlockRatio`                             | `mastery/evaluator.test.ts › "acte suivant verrouillé sous 90 %"`                                                                       |
-| L15 | Sur-apprentissage            | `session`, `gamification` | mode `speed`, `speedTargetMs`, bonus de rapidité                 | `session/builder.test.ts › "speed refusé avant maîtrise"` ; `gamification/xp.test.ts › "bonus de rapidité plafonné"`                    |
-| L16 | Variation contextuelle       | `shared`, `session`       | `DRILL_DIRECTIONS`, `DrillCueMap`, `SessionItem`                 | `session/directions.test.ts › "les 5 directions produisent les bons indices"` ; `contracts.test.ts › "appariement direction → indice"`  |
-| L17 | Consolidation par le sommeil | `session`, `gamification` | `SessionWindow`, quêtes soir/matin                               | `gamification/quests.test.ts › "quêtes soir et matin"` ; `session/engine.test.ts › "fenêtre calculée par ClockPort"`                    |
-| L18 | Prétest / génération erronée | `session`                 | `SessionItem.isPretest`, mode `discovery`                        | `session/engine.test.ts › "la devinette n'est pas journalisée, la tentative graduée oui"`                                               |
+La traçabilité est **générée** depuis les tests par `npm run traceability`
+(cf. [`TRACEABILITY.md`](./TRACEABILITY.md)). Elle ne doit jamais être éditée à
+la main ; la CI échoue si elle dérive (`npm run traceability:check`) et si un
+mécanisme `implemented` n'a plus aucun test qui le prouve.
 
 ## 10. Stratégie de test
 
