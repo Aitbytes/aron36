@@ -1,0 +1,11 @@
+node_modules/
+dist/
+coverage/
+package-lock.json
+.worktrees/
+docs/legacy/
+playwright-report/
+test-results/
+# Documents hors périmètre de la Phase 1 (ne pas reformater)
+README.md
+docs/PLAN.md
