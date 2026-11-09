@@ -30,12 +30,19 @@ import type {
  *   `hard` compte pour `0.5` et un `again` pour `0`. C'est la base du critère
  *   `minDirectionAccuracy`.
  * - **barre de maîtrise** : seules les notes de `MASTERY_QUALITY_GRADES`
- *   (`good`, `easy`) comptent, via `MasteryCriteria.minReps`. Un rappel
- *   laborieux entretient la carte mais ne prouve pas la maîtrise.
+ *   (`good`, `easy`) comptent. Un rappel laborieux entretient la carte mais ne
+ *   prouve pas la maîtrise.
  *
- * Le critère SRS d'une carte (`phase = "review"`, `intervalDays`,
- * `consecutiveSuccesses`) utilise le compteur de l'ordonnanceur, qui repose sur
- * `CORRECT_GRADES`. Seul `minReps` emploie les notes de qualité.
+ * **Réussites consécutives de qualité — recalculées ici.** Le critère SRS de la
+ * carte exige `minConsecutiveSuccesses` réussites **de qualité** consécutives,
+ * mesurées sur les `ReviewLog` les plus récents de la question (du plus ancien
+ * au plus récent, en s'arrêtant à la première note non qualitative).
+ * L'évaluateur n'utilise donc **pas** `CardState.consecutiveSuccesses` : ce
+ * dernier est le compteur **de l'ordonnanceur**, qui compte `CORRECT_GRADES`
+ * (`hard`, `good`, `easy`) et ne s'annule que sur `again`. Deux compteurs, deux
+ * sémantiques : un `hard` suffit à faire progresser l'ordonnanceur, jamais à
+ * valider une maîtrise. Il en va de même de `minReps`, qui compte les révisions
+ * **de qualité** de la question.
  *
  * Aucune I/O : tout provient de `MasteryInput` (états et journaux purs).
  */
@@ -71,6 +78,28 @@ function countQualityReviews(logs: readonly ReviewLog[]): number {
   return logs.filter((log) => QUALITY_GRADES.has(log.grade)).length;
 }
 
+/**
+ * Série de réussites **de qualité** consécutives, la plus récente d'abord.
+ *
+ * Les journaux sont triés par `reviewedAt` croissant (tri stable : à horodatage
+ * égal, l'ordre d'entrée est conservé, donc le résultat reste déterministe),
+ * puis parcourus à l'envers jusqu'à la première note non qualitative.
+ * C'est la seule mesure de « réussites consécutives » qui fait foi pour la
+ * maîtrise — `CardState.consecutiveSuccesses` appartient à l'ordonnanceur.
+ */
+function qualityStreak(logs: readonly ReviewLog[]): number {
+  const ordered = [...logs].sort((left, right) => left.reviewedAt - right.reviewedAt);
+  let streak = 0;
+  for (let index = ordered.length - 1; index >= 0; index -= 1) {
+    const log = ordered[index];
+    if (log === undefined || !QUALITY_GRADES.has(log.grade)) {
+      break;
+    }
+    streak += 1;
+  }
+  return streak;
+}
+
 /** Agrège les journaux d'une direction en une `DirectionMastery`. */
 function evaluateDirection(
   direction: DrillDirection,
@@ -103,7 +132,7 @@ function evaluateQuestion(
     card !== undefined &&
     card.phase === 'review' &&
     card.intervalDays >= criteria.minIntervalDays &&
-    card.consecutiveSuccesses >= criteria.minConsecutiveSuccesses &&
+    qualityStreak(logs) >= criteria.minConsecutiveSuccesses &&
     countQualityReviews(logs) >= criteria.minReps;
 
   const directions = DRILL_DIRECTIONS.map((direction) =>
