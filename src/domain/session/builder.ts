@@ -30,13 +30,13 @@ import type {
  * Construction déterministe d'un plan de session (L1, L3, L4, L5, L9, L16, L18).
  *
  * Ordre d'application (docs/ARCHITECTURE.md §7.2) :
- *  1. filtres (actes débloqués, actes/questions demandés, mode) ;
- *  2. plafonds L3 (`maxItems`, `maxDurationMs`) ;
- *  3. directions L16 (restreintes à `request.directions`) ;
- *  4. entrelacement L4 ;
- *  5. discrimination plafonnée ;
- *  6. indices L9 ;
- *  7. prétest L18.
+ *  1. validation et plafonds L3 (`maxItems`, `maxDurationMs`) ;
+ *  2. filtres (actes débloqués, actes/questions demandés, mode) ;
+ *  3. garde L15 (mode `speed` refusé tant que l'acte n'est pas maîtrisé) ;
+ *  4. sélection reproductible et directions L16 ;
+ *  5. entrelacement L4 ;
+ *  6. indices L9 et prétest L18 ;
+ *  7. discrimination plafonnée, interdite en mode examen (L1).
  *
  * Aucune exception n'est levée : toute configuration impossible produit un
  * `SessionBuildResult` en échec explicite.
@@ -52,6 +52,8 @@ interface ModeDefaults {
   readonly maxDurationMs: number | null;
   /** Directions imposées par le mode ; `null` = les cinq directions. */
   readonly directions: readonly DrillDirection[] | null;
+  /** Mode « examen » : aucune discrimination admise (L1, L15). */
+  readonly productionOnly: boolean;
 }
 
 const MODE_DEFAULTS: Readonly<Record<SessionMode, ModeDefaults>> = {
@@ -63,6 +65,7 @@ const MODE_DEFAULTS: Readonly<Record<SessionMode, ModeDefaults>> = {
     maxItems: null,
     maxDurationMs: null,
     directions: null,
+    productionOnly: false,
   },
   learning: {
     interleaving: 'directions',
@@ -72,6 +75,7 @@ const MODE_DEFAULTS: Readonly<Record<SessionMode, ModeDefaults>> = {
     maxItems: null,
     maxDurationMs: null,
     directions: null,
+    productionOnly: false,
   },
   review: {
     interleaving: 'acts-and-directions',
@@ -81,15 +85,19 @@ const MODE_DEFAULTS: Readonly<Record<SessionMode, ModeDefaults>> = {
     maxItems: null,
     maxDurationMs: null,
     directions: null,
+    productionOnly: false,
   },
   recitation: {
     interleaving: 'blocked',
     hintPolicy: 'on-demand',
     requiresConfidence: false,
     speedTargetMs: null,
-    maxItems: null,
-    maxDurationMs: null,
+    // Récitation libre : les trois actes (36 items) par défaut ; l'acte demandé
+    // limite la sélection à ses 12 items. 20 min de budget ⇒ 40 productions.
+    maxItems: 36,
+    maxDurationMs: 20 * 60 * 1000,
     directions: ['order-to-question'],
+    productionOnly: true,
   },
   speed: {
     interleaving: 'directions',
@@ -99,6 +107,7 @@ const MODE_DEFAULTS: Readonly<Record<SessionMode, ModeDefaults>> = {
     maxItems: null,
     maxDurationMs: null,
     directions: null,
+    productionOnly: false,
   },
   'grand-oral': {
     interleaving: 'acts-and-directions',
@@ -108,6 +117,7 @@ const MODE_DEFAULTS: Readonly<Record<SessionMode, ModeDefaults>> = {
     maxItems: 36,
     maxDurationMs: 20 * 60 * 1000,
     directions: null,
+    productionOnly: true,
   },
 };
 
@@ -618,14 +628,24 @@ function toDiscriminationItem(
   }
 }
 
-/** Applique le plafond de discrimination : jamais plus de 20 % des items (L4). */
+/**
+ * Applique le plafond de discrimination : jamais plus de 20 % des items (L4).
+ *
+ * Un mode « examen » (`productionOnly`) n'accepte **aucune** discrimination :
+ * `recitation` et `grand-oral` mesurent la restitution réelle, pas la
+ * reconnaissance. Le plafond de 20 % ne vaut donc que pour les modes qui
+ * autorisent le drill de discrimination.
+ */
 function applyDiscrimination(
   items: readonly SessionItem[],
-  ratio: number,
+  config: SessionConfig,
   context: SessionBuildContext,
   prng: Prng,
 ): SessionItem[] {
-  const limit = Math.floor(items.length * ratio);
+  if (config.productionOnly) {
+    return items.slice();
+  }
+  const limit = Math.floor(items.length * config.maxDiscriminationRatio);
   if (limit < 1) {
     return items.slice();
   }
@@ -742,6 +762,18 @@ export function buildSession(
     return { ok: false, failure: 'empty-selection' };
   }
 
+  // ── 3. Garde L15 : le drill de vitesse exige un acte maîtrisé ────────────
+  if (request.mode === 'speed') {
+    const mastered = new Set<ActId>(context.masteredActIds);
+    const targetedActs =
+      requestedActs === null
+        ? [...new Set(baseFiltered.map((question) => question.actId))]
+        : [...requestedActs];
+    if (targetedActs.some((actId) => !mastered.has(actId))) {
+      return { ok: false, failure: 'mode-locked' };
+    }
+  }
+
   const isDue = (questionId: QuestionId): boolean => {
     const card = context.cards.get(questionId);
     return card !== undefined && card.dueAt <= request.now;
@@ -785,7 +817,10 @@ export function buildSession(
     directions: allowedDirections,
     interleaving: defaults.interleaving,
     hintPolicy: defaults.hintPolicy,
-    maxDiscriminationRatio: Math.min(DEFAULT_SESSION_LIMITS.maxDiscriminationRatio, 0.2),
+    maxDiscriminationRatio: defaults.productionOnly
+      ? 0
+      : Math.min(DEFAULT_SESSION_LIMITS.maxDiscriminationRatio, 0.2),
+    productionOnly: defaults.productionOnly,
     requiresConfidence: defaults.requiresConfidence,
     speedTargetMs: defaults.speedTargetMs,
   };
@@ -814,8 +849,8 @@ export function buildSession(
     });
   });
 
-  // ── 8. Discrimination plafonnée ─────────────────────────────────────────
-  const items = applyDiscrimination(productionItems, config.maxDiscriminationRatio, context, prng);
+  // ── 7. Discrimination plafonnée, interdite en mode examen ───────────────
+  const items = applyDiscrimination(productionItems, config, context, prng);
 
   const plan: SessionPlan = {
     id: request.sessionId,

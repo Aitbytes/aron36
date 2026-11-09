@@ -128,7 +128,13 @@ interface SessionItemCommon {
   readonly actId: ActId;
   /** Image mentale de la réponse, utilisée par le feedback (L13). */
   readonly mentalImage: LocalizedText;
-  /** Indices ordonnés du plus faible au plus fort, jamais vides. */
+  /**
+   * Indices ordonnés du plus faible au plus fort.
+   *
+   * Invariant : vide **si et seulement si** la politique d'indices du plan est
+   * `disabled` (`SessionConfig.hintPolicy`). Une politique `on-demand` ou
+   * `progressive` garantit au moins l'indice `keyword`.
+   */
   readonly hints: readonly Hint[];
   /**
    * Item de prétest (L18) : l'apprenant devine avant toute révélation.
@@ -181,7 +187,6 @@ export const DEFAULT_SESSION_LIMITS = {
   maxItems: 20,
   maxDurationMs: 15 * 60 * 1000,
   productionItemMs: 30_000,
-  discriminationItemMs: 15_000,
   maxDiscriminationRatio: 0.2,
 } as const;
 
@@ -196,8 +201,17 @@ export interface SessionConfig {
   readonly directions: readonly DrillDirection[];
   readonly interleaving: InterleavingPolicy;
   readonly hintPolicy: HintPolicy;
-  /** Part maximale d'items de discrimination, bornée à 0.2. */
+  /** Part maximale d'items de discrimination, bornée à 0.2 ; vaut 0 si `productionOnly`. */
   readonly maxDiscriminationRatio: Ratio;
+  /**
+   * Mode « examen » : aucune discrimination n'est admise (L1).
+   *
+   * Vrai pour `recitation` et `grand-oral` : ces modes mesurent la restitution
+   * effective des 36 items, un QCM y introduirait de la reconnaissance. Quand ce
+   * drapeau est vrai, `maxDiscriminationRatio` vaut `0` et le constructeur ne
+   * produit que des items de production.
+   */
+  readonly productionOnly: boolean;
   /** Exige un jugement de confiance avant révélation (L12). */
   readonly requiresConfidence: boolean;
   /** Cible de temps de réponse pour le mode `speed` (L15), sinon `null`. */
@@ -236,6 +250,14 @@ export interface SessionBuildContext {
   readonly recentLogs: readonly ReviewLog[];
   /** Actes débloqués par la maîtrise (L14). */
   readonly unlockedActIds: readonly ActId[];
+  /**
+   * Actes dont la maîtrise est atteinte (L15).
+   *
+   * Sert de garde au drill de vitesse : `speed` est refusé (`mode-locked`) tant
+   * que l'acte demandé n'y figure pas. La liste est calculée par la couche
+   * application depuis `MasteryEvaluator`, jamais par le domaine.
+   */
+  readonly masteredActIds: readonly ActId[];
 }
 
 /** Traçabilité de l'ordre construit, vérifiable en test. */
@@ -263,7 +285,12 @@ export interface SessionPlan {
 
 /** Motif d'échec de construction, à traduire par l'UI. */
 export type SessionBuildFailure =
-  'empty-selection' | 'no-due-cards' | 'act-locked' | 'invalid-config';
+  | 'empty-selection'
+  | 'no-due-cards'
+  | 'act-locked'
+  /** Mode refusé : `speed` exige un acte maîtrisé (L15). */
+  | 'mode-locked'
+  | 'invalid-config';
 
 /** Résultat explicite de la construction d'un plan. */
 export type SessionBuildResult =
@@ -282,7 +309,13 @@ export interface SessionState {
   readonly answers: readonly SessionAnswer[];
   /** Nombre d'indices révélés pour l'item courant. */
   readonly revealedHints: number;
-  /** Confiance déclarée pour l'item courant, avant révélation (L12). */
+  /**
+   * Confiance déclarée pour l'item courant, avant révélation (L12).
+   *
+   * Renseignée uniquement par `SessionEngine.setConfidence` (phase `asking`) ;
+   * remise à `null` à chaque nouvel item. Quand `requiresConfidence` est vrai,
+   * `revealAnswer` et `submitAnswer` la refusent si elle vaut `null`.
+   */
   readonly confidence: ConfidenceRating | null;
   readonly startedAt: EpochMs;
   readonly completedAt: EpochMs | null;
@@ -323,7 +356,13 @@ export interface SessionAnswer {
   readonly direction: DrillDirection;
   readonly exerciseKind: ExerciseKind;
   readonly grade: ReviewGrade;
+  /** Recopiée depuis `SessionState.confidence`, jamais depuis la saisie (L12). */
   readonly confidence: ConfidenceRating | null;
+  /**
+   * Reprend `SessionItem.isPretest` (L18) : une devinette de prétest n'est ni
+   * corrigée ni journalisée ; la tentative graduée est l'item suivant.
+   */
+  readonly isPretest: boolean;
   readonly responseTimeMs: DurationMs;
   readonly hintsUsed: number;
   readonly channel: AnswerChannel;
@@ -337,11 +376,15 @@ export interface SessionAnswer {
   readonly isCorrect: boolean;
 }
 
-/** Saisie d'une réponse par l'UI. */
+/**
+ * Saisie d'une réponse par l'UI.
+ *
+ * La confiance n'y figure pas : elle est jugée **avant** la révélation, donc
+ * portée par `SessionState.confidence` via `SessionEngine.setConfidence` (L12).
+ */
 export interface SessionAnswerInput {
   readonly itemId: string;
   readonly grade: ReviewGrade;
-  readonly confidence: ConfidenceRating | null;
   readonly responseTimeMs: DurationMs;
   readonly hintsUsed: number;
   readonly channel: AnswerChannel;
@@ -356,7 +399,16 @@ export interface SessionAnswerInput {
 export interface SessionSubmission {
   readonly state: SessionState;
   readonly answer: SessionAnswer;
-  readonly feedback: AnswerFeedback;
+  /**
+   * Feedback correctif (L13), ou `null` pour un prétest (L18).
+   *
+   * Un prétest ne reçoit ni correction ni feedback : il ne doit pas révéler la
+   * réponse attendue, sans quoi la génération erronée devient une simple
+   * lecture. La tentative graduée qui suit reçoit, elle, un feedback complet.
+   * La non-journalisation de la devinette (aucun `ReviewLog`) relève de la
+   * Phase 3 : le cas d'usage ignore les `SessionAnswer` dont `isPretest` est vrai.
+   */
+  readonly feedback: AnswerFeedback | null;
   readonly completed: boolean;
 }
 
@@ -420,16 +472,46 @@ export interface SessionBuilder {
   build(request: SessionRequest, context: SessionBuildContext): SessionBuildResult;
 }
 
+/** Motif d'échec d'une transition, à traduire par l'UI. */
+export type SessionTransitionFailure =
+  /** Transition demandée hors de la phase attendue. */
+  | 'wrong-phase'
+  /** `revealAnswer` alors que `requiresConfidence` et confiance nulle (L12). */
+  | 'confidence-required';
+
+/** Résultat rejetable d'une transition `asking → asking | revealed` (L12). */
+export type SessionTransitionResult =
+  | { readonly ok: true; readonly state: SessionState }
+  | { readonly ok: false; readonly failure: SessionTransitionFailure };
+
 /**
  * Machine à états de session.
  *
  * Transitions autorisées : `asking → revealed → completed`. `submitAnswer`
- * n'est valide qu'en phase `revealed` ; `revealNextHint` qu'en phase `asking`.
+ * n'est valide qu'en phase `revealed` ; `revealNextHint` et `setConfidence`
+ * qu'en phase `asking`. `setConfidence` doit précéder `revealAnswer` quand
+ * `requiresConfidence` est vrai (L12).
  */
 export interface SessionEngine {
   start(plan: SessionPlan, now: EpochMs): SessionState;
   revealNextHint(state: SessionState): SessionState;
-  revealAnswer(state: SessionState): SessionState;
-  /** Rejette explicitement toute soumission hors phase `revealed`. */
+  /**
+   * Déclare la confiance de l'item courant, avant révélation (L12).
+   *
+   * Rejette (`wrong-phase`) toute déclaration hors phase `asking`, y compris
+   * après révélation : un jugement rétroactif n'a aucune valeur de calibration.
+   */
+  setConfidence(state: SessionState, rating: ConfidenceRating): SessionTransitionResult;
+  /**
+   * Passe en phase `revealed`.
+   *
+   * Rejette `wrong-phase` hors phase `asking` et `confidence-required` si
+   * `requiresConfidence` est vrai et que la confiance n'a pas été déclarée.
+   */
+  revealAnswer(state: SessionState): SessionTransitionResult;
+  /**
+   * Rejette explicitement toute soumission hors phase `revealed`, ainsi que
+   * toute soumission sans confiance quand `requiresConfidence` est vrai.
+   */
   submitAnswer(state: SessionState, input: SessionAnswerInput): SessionSubmissionResult;
 }

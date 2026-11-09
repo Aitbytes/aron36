@@ -15,6 +15,15 @@ function buildPlan(): SessionPlan {
   return result.plan;
 }
 
+function buildExamPlan(): SessionPlan {
+  const result = buildSession(makeRequest({ mode: 'grand-oral' }), makeContext());
+  expect(result.ok).toBe(true);
+  if (!result.ok) {
+    throw new Error('plan d’examen attendu');
+  }
+  return result.plan;
+}
+
 function findItem(plan: SessionPlan, direction: DrillDirection): SessionItem {
   const item = plan.items.find((candidate) => candidate.direction === direction);
   if (item === undefined) {
@@ -84,6 +93,19 @@ describe('directions — les cinq indices de L16', () => {
       expect(item.cue.questionNumber).toBe(item.questionId);
     }
     expect(item.expectedAnswer.kind).toBe('question');
+  });
+
+  it('les cinq directions restent représentées en mode examen, sans QCM (L1)', () => {
+    const exam = buildExamPlan();
+    expect(exam.items).toHaveLength(36);
+    expect(exam.config.productionOnly).toBe(true);
+    expect(exam.interleaving.discriminationCount).toBe(0);
+    const directions = new Set(exam.items.map((item) => item.direction));
+    expect(directions.size).toBe(5);
+    for (const item of exam.items) {
+      expect(item.exerciseKind).toBe('production');
+      expect(item.hints).toEqual([]);
+    }
   });
 
   it('question-to-number : texte → numéro global (seule direction inversée)', () => {

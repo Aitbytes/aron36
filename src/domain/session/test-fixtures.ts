@@ -135,6 +135,7 @@ export function makeContext(overrides: Partial<SessionBuildContext> = {}): Sessi
     hooks: [],
     recentLogs: [],
     unlockedActIds: [...ALL_ACTS],
+    masteredActIds: [],
     ...overrides,
   };
 }

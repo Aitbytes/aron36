@@ -1,5 +1,5 @@
 import { CORRECT_GRADES } from '@/domain/shared/types';
-import type { EpochMs, ReviewGrade } from '@/domain/shared/types';
+import type { ConfidenceRating, EpochMs, ReviewGrade } from '@/domain/shared/types';
 
 import type {
   AnswerFeedback,
@@ -11,15 +11,21 @@ import type {
   SessionPlan,
   SessionState,
   SessionSubmissionResult,
+  SessionTransitionResult,
 } from './types';
 
 /**
- * Machine à états d'une session (L1, L9, L12, L13).
+ * Machine à états d'une session (L1, L9, L12, L13, L18).
  *
  * Transitions autorisées : `asking → revealed → completed`.
  * Chaque transition renvoie un **nouvel** état : l'état d'entrée n'est jamais
  * muté. Le domaine ne note pas, n'ordonnance pas et ne calcule pas d'XP : il
  * produit une `SessionAnswer` normalisée et un feedback correctif.
+ *
+ * La confiance (L12) est jugée **avant** la révélation : `setConfidence` la
+ * dépose dans l'état, `revealAnswer` l'exige quand `requiresConfidence` est
+ * vrai, et `submitAnswer` la recopie dans la réponse. Un prétest (L18) ne
+ * produit aucun feedback de correction.
  */
 
 /** Cles i18n stables, une par `ErrorSignal` (L13). */
@@ -45,10 +51,10 @@ function isCorrectGrade(grade: ReviewGrade): boolean {
 function deduceErrorSignal(
   item: SessionItem,
   grade: ReviewGrade,
-  input: SessionAnswerInput,
+  responseTimeMs: number,
 ): ErrorSignal {
   if (!isCorrectGrade(grade)) {
-    if (input.responseTimeMs <= 0) {
+    if (responseTimeMs <= 0) {
       return 'omission';
     }
     if (item.direction === 'question-to-number') {
@@ -87,11 +93,21 @@ function revealNextHint(state: SessionState): SessionState {
   return { ...state, revealedHints: state.revealedHints + 1 };
 }
 
-function revealAnswer(state: SessionState): SessionState {
+function revealAnswer(state: SessionState): SessionTransitionResult {
   if (state.phase !== 'asking') {
-    return state;
+    return { ok: false, failure: 'wrong-phase' };
   }
-  return { ...state, phase: 'revealed' };
+  if (state.plan.config.requiresConfidence && state.confidence === null) {
+    return { ok: false, failure: 'confidence-required' };
+  }
+  return { ok: true, state: { ...state, phase: 'revealed' } };
+}
+
+function setConfidence(state: SessionState, rating: ConfidenceRating): SessionTransitionResult {
+  if (state.phase !== 'asking') {
+    return { ok: false, failure: 'wrong-phase' };
+  }
+  return { ok: true, state: { ...state, confidence: rating } };
 }
 
 function submitAnswer(state: SessionState, input: SessionAnswerInput): SessionSubmissionResult {
@@ -99,6 +115,10 @@ function submitAnswer(state: SessionState, input: SessionAnswerInput): SessionSu
     return { ok: false, failure: 'session-completed' };
   }
   if (state.phase !== 'revealed') {
+    return { ok: false, failure: 'wrong-phase' };
+  }
+  const requiresConfidence = state.plan.config.requiresConfidence;
+  if (requiresConfidence && state.confidence === null) {
     return { ok: false, failure: 'wrong-phase' };
   }
   if (state.answers.some((answer) => answer.itemId === input.itemId)) {
@@ -110,9 +130,7 @@ function submitAnswer(state: SessionState, input: SessionAnswerInput): SessionSu
   }
 
   const correct = isCorrectGrade(input.grade);
-  const confidence = state.plan.config.requiresConfidence
-    ? (input.confidence ?? state.confidence)
-    : null;
+  const confidence = requiresConfidence ? state.confidence : null;
   const answer: SessionAnswer = {
     itemId: item.id,
     questionId: item.questionId,
@@ -120,6 +138,7 @@ function submitAnswer(state: SessionState, input: SessionAnswerInput): SessionSu
     exerciseKind: item.exerciseKind,
     grade: input.grade,
     confidence,
+    isPretest: item.isPretest,
     responseTimeMs: input.responseTimeMs,
     hintsUsed: input.hintsUsed,
     channel: input.channel,
@@ -127,14 +146,11 @@ function submitAnswer(state: SessionState, input: SessionAnswerInput): SessionSu
     isCorrect: correct,
   };
 
-  const errorSignal = deduceErrorSignal(item, input.grade, input);
-  const feedback: AnswerFeedback = {
-    correct,
-    expectedAnswer: item.expectedAnswer,
-    mentalImage: item.mentalImage,
-    errorSignal,
-    messageKey: FEEDBACK_MESSAGE_KEYS[errorSignal],
-  };
+  // L18 : une devinette de prétest n'est pas corrigée ; la tentative graduée est
+  // l'item suivant. Le moteur n'émet donc aucun feedback pour elle.
+  const feedback = item.isPretest
+    ? null
+    : buildFeedback(item, input.grade, correct, input.responseTimeMs);
 
   const nextIndex = state.currentIndex + 1;
   const completed = nextIndex >= state.plan.items.length;
@@ -151,12 +167,30 @@ function submitAnswer(state: SessionState, input: SessionAnswerInput): SessionSu
   return { ok: true, submission: { state: nextState, answer, feedback, completed } };
 }
 
+/** Feedback correctif complet d'un item gradué (L13). */
+function buildFeedback(
+  item: SessionItem,
+  grade: ReviewGrade,
+  correct: boolean,
+  responseTimeMs: number,
+): AnswerFeedback {
+  const errorSignal = deduceErrorSignal(item, grade, responseTimeMs);
+  return {
+    correct,
+    expectedAnswer: item.expectedAnswer,
+    mentalImage: item.mentalImage,
+    errorSignal,
+    messageKey: FEEDBACK_MESSAGE_KEYS[errorSignal],
+  };
+}
+
 /** Implémentation par défaut, sans état, de la machine à états de session. */
 export const sessionEngine: SessionEngine = {
   start,
   revealNextHint,
+  setConfidence,
   revealAnswer,
   submitAnswer,
 };
 
-export { start, revealNextHint, revealAnswer, submitAnswer };
+export { start, revealNextHint, setConfidence, revealAnswer, submitAnswer };
