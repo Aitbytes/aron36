@@ -1,0 +1,66 @@
+[
+  {
+    "j": "Jour 1",
+    "t": "Acte I (~25 min)",
+    "tasks": [
+      "Lis les 12 questions de l'Acte I à voix haute (production effect).",
+      "Déroule le film « Le Dîner » 2 fois en visualisant chaque scène.",
+      "Entraînement → Apprentissage → Acte I (avec indices).",
+      "Écris les 12 mots-clés de mémoire sur une feuille blanche."
+    ]
+  },
+  {
+    "j": "Jour 2",
+    "t": "Acte II + rappel Acte I (~25 min)",
+    "tasks": [
+      "Rappel à froid de l'Acte I : mots-clés puis questions, de mémoire.",
+      "Acte II à voix haute + film « La Boule de Cristal ».",
+      "Entraînement → Apprentissage → Acte II.",
+      "Révision espacée : les cartes de l'Acte I reviennent (J+1)."
+    ]
+  },
+  {
+    "j": "Jour 3",
+    "t": "Acte III + rappel I & II (~25 min)",
+    "tasks": [
+      "Rappel à froid des Actes I et II.",
+      "Acte III à voix haute + film « L'Incendie ».",
+      "Entraînement → Apprentissage → Acte III.",
+      "Révision espacée des cartes dues."
+    ]
+  },
+  {
+    "j": "Jour 4",
+    "t": "Assemblage complet (~20 min)",
+    "tasks": [
+      "Récite les 36 en ordre chronologique, à voix haute, sans aide.",
+      "Repère les trous et retravaille uniquement ceux-là.",
+      "Entraînement → Test croisé (10 QCM)."
+    ]
+  },
+  {
+    "j": "Jour 5",
+    "t": "Consolidation légère (~10 min)",
+    "tasks": [
+      "Révision espacée seulement — ou repos complet.",
+      "Récite les 3 films mentalement avant de t'endormir."
+    ]
+  },
+  {
+    "j": "Jour 6",
+    "t": "Test difficile (~15 min)",
+    "tasks": [
+      "Test croisé en mode aléatoire.",
+      "Technique Feynman : explique le protocole à quelqu'un, à voix haute.",
+      "Test à double sens : « question 22 ? » et « dîner → quel numéro ? »."
+    ]
+  },
+  {
+    "j": "Jour 7",
+    "t": "Examen final (~10 min)",
+    "tasks": [
+      "Récite les 36, en ordre, sans aide, en moins de 5 minutes.",
+      "Programme la maintenance J+14 et J+30 (automatique via les boîtes)."
+    ]
+  }
+]

@@ -1,31 +1,43 @@
-# Aron 36 — Apprendre par cœur les 36 questions d'Aron
+# Aron 36
 
-Appli web statique (fichier unique, zéro dépendance) qui regroupe tout le kit
-d'apprentissage basé sur la science de la mémorisation :
+Apprendre **par cœur** les 36 questions d'Arthur Aron — dans l'ordre, avec leur
+formulation — grâce à un entraîneur de mémorisation fondé sur les preuves
+(rappel actif, répétition espacée, entrelacement, imagerie), enveloppé dans une
+progression ludique.
 
-- **Les 36 questions** (Aron et al., 1997) classées en 3 actes, avec mode récitation (rappel à froid)
-- **Les 3 films mentaux** (link method / chaînes d'images)
-- **Le plan 7 jours** avec cases à cocher persistantes
-- **L'entraînement** : apprentissage par acte avec indices, révision espacée (boîtes de Leitner), QCM croisé
-- **La progression** : histogramme des boîtes, cartes solides, prochaines échéances
+> Application web statique, hors ligne-first, sans compte et sans serveur.
+> Les données de progression restent dans le navigateur.
 
-La progression est stockée dans le `localStorage` du navigateur.
+## Statut
 
-## Techniques mobilisées (preuves)
+🚧 **En construction.** Le projet suit un plan d'orchestration par phases
+(architecture → cœur métier → application → interface → durcissement) documenté
+dans [`docs/PLAN.md`](docs/PLAN.md).
 
-| Technique | Référence |
+Le prototype mono-fichier précédent est conservé dans `docs/legacy/` : il sert
+de source de contenu (36 questions, mots-clés, images mentales, plan 7 jours)
+et de référence de comportement.
+
+## Pourquoi ce projet
+
+Les 36 questions d'Aron (Aron et al., 1997) sont un protocole de génération de
+proximité en trois actes de 12 questions. Les utiliser correctement suppose de
+les connaître assez bien pour les poser sans les lire. Ce projet vise cette
+automatisation — avec les techniques dont l'efficacité est documentée, pas avec
+des fiches à relire.
+
+## Documentation
+
+| Fichier | Contenu |
 |---|---|
-| Testing effect (rappel actif) | Roediger & Karpicke, 2006 |
-| Répétition espacée | Ebbinghaus ; Cepeda et al., 2006 ; Dunlosky et al., 2013 |
-| Chunking (3×12) | Miller, 1956 |
-| Chaînes d'images / palais mental | Maguire et al., 2003 |
-| Production effect (à voix haute) | MacLeod, 2010 |
-| Consolidation pendant le sommeil | Rasch & Born, 2013 |
-
-## Déploiement
-
-Statique : n'importe quel serveur de fichiers. Déployé sur Dokploy (build type `static`).
+| [`docs/PLAN.md`](docs/PLAN.md) | Objectif, science de l'apprentissage mobilisée, phases, protocole d'orchestration |
+| `docs/ARCHITECTURE.md` | *(Phase 1)* architecture technique, modules, interfaces, ADRs |
 
 ## Développement
 
-Ouvrir `index.html` dans un navigateur. C'est tout.
+*(Phase 1)* — installation, scripts, tests et exécution locale seront
+documentés ici une fois l'outillage en place.
+
+## Licence
+
+MIT — voir [`LICENSE`](LICENSE).

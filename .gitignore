@@ -1,0 +1,33 @@
+node_modules/
+dist/
+dist-ssr/
+coverage/
+.vite/
+*.local
+
+# éditeurs
+.vscode/*
+!.vscode/extensions.json
+.idea/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
+
+# logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+yarn-error.log*
+
+# test / e2e
+playwright-report/
+test-results/
+blob-report/
+.playwright/
+
+# env
+.env
+.env.*
+!.env.example

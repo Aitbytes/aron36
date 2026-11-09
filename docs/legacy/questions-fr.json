@@ -1,0 +1,246 @@
+{
+  "source": "Aron, A., Melinat, E., Aron, E. N., Vallone, R. D., & Bator, R. J. (1997). The Experimental Generation of Interpersonal Closeness. Personality and Social Psychology Bulletin, 23(4), 363-377.",
+  "note": "Traduction FR extraite du prototype v0 (docs/legacy/aron36-v0.html). A VERIFIER contre le texte original anglais (36 items, 3 sets de 12) avant usage en production.",
+  "acts": [
+    {
+      "id": 1,
+      "titre": "Acte I — Briser la glace",
+      "film": "Le Dîner",
+      "pitch": "Tu donnes un dîner, et la soirée déraille peu à peu.",
+      "questions": [
+        {
+          "n": 1,
+          "mot": "Dîner",
+          "fr": "Si tu pouvais inviter n'importe qui au monde à dîner, qui inviterais-tu ?",
+          "img": "Tu dresses une table géante, un invité arrive."
+        },
+        {
+          "n": 2,
+          "mot": "Célèbre",
+          "fr": "Aimerais-tu devenir célèbre ? De quelle manière ?",
+          "img": "L'invité met des lunettes noires : c'est une star, on le reconnaît."
+        },
+        {
+          "n": 3,
+          "mot": "Téléphone",
+          "fr": "Avant de passer un appel téléphonique, te répètes-tu parfois ce que tu vas dire ? Pourquoi ?",
+          "img": "Avant de l'appeler pour l'inviter, tu répètes ton texte en bafouillant."
+        },
+        {
+          "n": 4,
+          "mot": "Journée parfaite",
+          "fr": "Comment serait pour toi une journée « parfaite » ?",
+          "img": "La journée entière défile en accéléré, dorée, parfaite."
+        },
+        {
+          "n": 5,
+          "mot": "Chanter",
+          "fr": "Quand as-tu chanté pour la dernière fois pour toi-même ? Pour quelqu'un d'autre ?",
+          "img": "Tout le monde se met à chanter en chœur."
+        },
+        {
+          "n": 6,
+          "mot": "90 ans",
+          "fr": "Si tu pouvais vivre jusqu'à 90 ans et garder soit l'esprit soit le corps d'une personne de 30 ans pendant les 60 dernières années, lequel choisirais-tu ?",
+          "img": "Un vieux de 90 ans déchire sa peau : corps de 30 ans dessous."
+        },
+        {
+          "n": 7,
+          "mot": "Intuition",
+          "fr": "As-tu une intuition secrète sur la façon dont tu vas mourir ?",
+          "img": "Il te chuchote à l'oreille comment tu vas mourir. Frisson."
+        },
+        {
+          "n": 8,
+          "mot": "Points communs",
+          "fr": "Cite trois choses que vous semblez avoir en commun, toi et ton partenaire.",
+          "img": "Trois fils rouges relient ton cœur au sien."
+        },
+        {
+          "n": 9,
+          "mot": "Gratitude",
+          "fr": "Pour quoi dans ta vie te sens-tu le plus reconnaissant(e) ?",
+          "img": "Tout le monde se lève pour te remercier, tu fonds en larmes de gratitude."
+        },
+        {
+          "n": 10,
+          "mot": "Éducation",
+          "fr": "Si tu pouvais changer quelque chose à la façon dont tu as été élevé(e), que changerais-tu ?",
+          "img": "Tes parents apparaissent et refont ton éducation à rebours."
+        },
+        {
+          "n": 11,
+          "mot": "4 minutes",
+          "fr": "Prends quatre minutes et raconte à ton partenaire l'histoire de ta vie avec le plus de détails possible.",
+          "img": "Un sablier de 4 minutes se retourne : raconte ta vie avant la fin."
+        },
+        {
+          "n": 12,
+          "mot": "Réveil",
+          "fr": "Si tu pouvais te réveiller demain matin avec une qualité ou une capacité en plus, laquelle serait-ce ?",
+          "img": "Tu te réveilles le lendemain avec un super-pouvoir."
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "titre": "Acte II — Valeurs et souvenirs",
+      "film": "La Boule de Cristal",
+      "pitch": "Une diseuse de voyance déroule ta vie sous tes yeux.",
+      "questions": [
+        {
+          "n": 13,
+          "mot": "Cristal",
+          "fr": "Si une boule de cristal pouvait te dire la vérité sur toi-même, ta vie, le futur ou n'importe quoi d'autre, que voudrais-tu savoir ?",
+          "img": "Une boule de cristal fumante apparaît sur la table."
+        },
+        {
+          "n": 14,
+          "mot": "Rêve",
+          "fr": "Y a-t-il quelque chose dont tu rêves de faire depuis longtemps ? Pourquoi ne l'as-tu pas encore fait ?",
+          "img": "Dans la boule, le rêve que tu n'oses pas vivre s'envole."
+        },
+        {
+          "n": 15,
+          "mot": "Réussite",
+          "fr": "Quelle est la plus grande réussite de ta vie ?",
+          "img": "Tu reçois un trophée doré : ta plus grande réussite."
+        },
+        {
+          "n": 16,
+          "mot": "Amitié (valeur)",
+          "fr": "Qu'est-ce que tu valorises le plus dans une amitié ?",
+          "img": "Un ami te serre dans ses bras."
+        },
+        {
+          "n": 17,
+          "mot": "Souvenir précieux",
+          "fr": "Quel est ton souvenir le plus précieux ?",
+          "img": "Une photo dorée flotte hors de la boule."
+        },
+        {
+          "n": 18,
+          "mot": "Pire souvenir",
+          "fr": "Quel est ton pire souvenir ?",
+          "img": "La boule s'embrase et devient noire."
+        },
+        {
+          "n": 19,
+          "mot": "Mourir dans 1 an",
+          "fr": "Si tu savais que tu mourrais subitement dans un an, changerais-tu quelque chose à ta façon de vivre actuelle ? Pourquoi ?",
+          "img": "La boule affiche : « 1 an ». Que changerais-tu ?"
+        },
+        {
+          "n": 20,
+          "mot": "Amitié (sens)",
+          "fr": "Que signifie l'amitié pour toi ?",
+          "img": "Le mot AMITIÉ s'écrit en lettres géantes."
+        },
+        {
+          "n": 21,
+          "mot": "Amour",
+          "fr": "Quelle place tiennent l'amour et l'affection dans ta vie ?",
+          "img": "Les lettres se transforment en cœurs battants."
+        },
+        {
+          "n": 22,
+          "mot": "5 qualités",
+          "fr": "À tour de rôle, citez cinq choses que vous considérez comme des qualités positives chez l'autre.",
+          "img": "Vous vous dites 5 qualités à tour de rôle, en vous pointant."
+        },
+        {
+          "n": 23,
+          "mot": "Famille",
+          "fr": "À quel point ta famille est-elle proche et chaleureuse ? Penses-tu que ton enfance a été plus heureuse que celle de la plupart des gens ?",
+          "img": "Ta famille entière se serre autour d'un feu chaleureux."
+        },
+        {
+          "n": 24,
+          "mot": "Mère",
+          "fr": "Comment te sens-tu par rapport à ta relation avec ta mère ?",
+          "img": "Ta mère s'avance seule, vous vous regardez."
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "titre": "Acte III — Vulnérabilité",
+      "film": "L'Incendie",
+      "pitch": "La nuit tombe, tout devient intense et nu.",
+      "questions": [
+        {
+          "n": 25,
+          "mot": "Nous",
+          "fr": "Faites, chacun à tour de rôle, trois affirmations vraies commençant par « nous ». Par exemple : « Nous sommes tous les deux dans cette pièce en train de… »",
+          "img": "Vous dites ensemble « NOUS SOMMES… » — le mot NOUS s'illumine."
+        },
+        {
+          "n": 26,
+          "mot": "Partager",
+          "fr": "Complète cette phrase : « Je voudrais avoir quelqu'un avec qui partager… »",
+          "img": "Tu complètes : « Je voudrais quelqu'un avec qui partager… »"
+        },
+        {
+          "n": 27,
+          "mot": "Savoir",
+          "fr": "Si tu allais devenir un ami proche de ton partenaire, dis-lui ce qui serait important qu'il sache sur toi.",
+          "img": "Tu lui remets une clé : voilà ce qu'il doit savoir de toi."
+        },
+        {
+          "n": 28,
+          "mot": "Honnête",
+          "fr": "Dis à ton partenaire ce que tu aimes chez lui. Sois totalement honnête : dis des choses que tu ne dirais pas à quelqu'un que tu viens de rencontrer.",
+          "img": "Tu lui dis des choses brutes, jamais dites à un inconnu."
+        },
+        {
+          "n": 29,
+          "mot": "Honte",
+          "fr": "Raconte à ton partenaire un moment embarrassant de ta vie.",
+          "img": "Un moment embarrassant rejoue en boucle, tu rougis."
+        },
+        {
+          "n": 30,
+          "mot": "Pleurs",
+          "fr": "Quand as-tu pleuré pour la dernière fois devant quelqu'un ? Seul(e) ?",
+          "img": "Les larmes coulent, devant l'autre puis seul."
+        },
+        {
+          "n": 31,
+          "mot": "Déjà",
+          "fr": "Dis à ton partenaire quelque chose que tu aimes déjà chez lui.",
+          "img": "Tu lui redis ce que tu aimes déjà chez lui."
+        },
+        {
+          "n": 32,
+          "mot": "Blague",
+          "fr": "Y a-t-il quelque chose de trop sérieux pour en plaisanter ?",
+          "img": "Un clown s'approche ; quelqu'un dit STOP : trop sérieux pour rire."
+        },
+        {
+          "n": 33,
+          "mot": "Regret",
+          "fr": "Si tu devais mourir ce soir sans possibilité de communiquer avec quiconque, de quoi regretterais-tu le plus de ne pas avoir dit à quelqu'un ? Pourquoi ne l'as-tu pas encore dit ?",
+          "img": "Minuit sonne : dernière chance de dire ce qu'on n'a jamais dit."
+        },
+        {
+          "n": 34,
+          "mot": "Incendie",
+          "fr": "Ta maison, avec tout ce qu'elle contient, prend feu. Après avoir sauvé tes proches et tes animaux, tu as le temps de faire un dernier saut pour sauver un seul objet. Lequel ? Pourquoi ?",
+          "img": "La maison brûle ! Proches sauvés, tu rattrapes UN objet au vol."
+        },
+        {
+          "n": 35,
+          "mot": "Deuil",
+          "fr": "De tous les membres de ta famille, dont la mort te bouleverserait le plus ? Pourquoi ?",
+          "img": "Dans la fumée : quel décès te briserait le plus ?"
+        },
+        {
+          "n": 36,
+          "mot": "Conseil",
+          "fr": "Partage un problème personnel et demande conseil à ton partenaire sur la façon dont il le gérerait. Puis demande-lui de te dire comment il pense que tu te sens par rapport à ce problème.",
+          "img": "Assis dans les cendres, tu exposes ton problème, il t'écoute et conseille."
+        }
+      ]
+    }
+  ]
+}
