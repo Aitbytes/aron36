@@ -14,12 +14,13 @@ import { COLLECTION_ENTRY_MIN_INTERVAL_DAYS, COLLECTION_MASTERY_TIER_DAYS } from
  * Collection des 36 cartes (L14).
  *
  * Anti-objectifs servis par ce module :
- * - **pas de rareté artificielle** : la rareté dérive de l'acte, jamais du
- *   hasard ; les cinq paliers de maîtrise sont atteignables (21 → 180 jours) ;
+ * - **pas de rareté artificielle** : la rareté dérive de l'acte et le palier de
+ *   l'intervalle SRS réel, jamais du hasard ; les cinq paliers de maîtrise sont
+ *   atteignables (21 → 180 jours) et un palier franchi est écrit ;
  * - **pas de récompense sans production** : une carte n'est créée qu'à la
  *   **maîtrise** d'une question, jamais après une simple réussite ;
  * - **pas de doublon** : une question déjà collectionnée n'est jamais ré-ajoutée
- *   et son palier n'est jamais rétrogradé.
+ *   et son palier n'est jamais rétrogradé (aucune punition).
  */
 
 /** Acte d'une question, déduit de son rang (12 questions par acte). */
@@ -62,37 +63,53 @@ export function masteryTierFor(intervalDays: number): 1 | 2 | 3 | 4 | 5 {
   return 1;
 }
 
+/** Palier plancher d'une carte neuve : la maîtrise garantit le premier seuil. */
+const MIN_TIER = masteryTierFor(COLLECTION_ENTRY_MIN_INTERVAL_DAYS);
+
 /**
  * Évaluation d'une question.
  *
- * Limite du contrat gelé : `CollectionUpdateInput` ne transporte pas
- * l'intervalle SRS de la carte (`QuestionMastery` n'en porte pas). La maîtrise
- * garantit au minimum `COLLECTION_ENTRY_MIN_INTERVAL_DAYS` jours d'intervalle,
- * donc le palier plancher 1 ; `masteryTierFor` est exporté pour que la Phase 3
- * affine le palier lorsqu'elle dispose de la `CardState`.
+ * Le palier est **recalculé à chaque évaluation** depuis `intervalDays` : une
+ * carte déjà obtenue progresse donc de palier au fil des révisions espacées.
+ * Le palier ne redescend jamais, même si la maîtrise ou l'intervalle régresse.
  */
 function update(input: CollectionUpdateInput): CollectionUpdate {
-  const { state, mastery, now } = input;
+  const { state, mastery, intervalDays, now } = input;
   const existing = state.entries.find((entry) => entry.questionId === mastery.questionId);
+  const tier = masteryTierFor(intervalDays);
 
   if (!mastery.mastered) {
     return { state, unlocked: false, previousTier: existing?.masteryTier ?? null };
   }
-  if (existing !== undefined) {
+  if (existing === undefined) {
+    const entry: CollectionEntry = {
+      questionId: mastery.questionId,
+      rarity: rarityForAct(actOfQuestion(mastery.questionId)),
+      obtainedAt: now,
+      // Plancher de maîtrise : `COLLECTION_ENTRY_MIN_INTERVAL_DAYS` vaut le
+      // premier seuil, donc une entrée neuve vaut au moins le palier 1.
+      masteryTier: tier >= MIN_TIER ? tier : MIN_TIER,
+    };
+    return {
+      state: { entries: [...state.entries, entry] },
+      unlocked: true,
+      previousTier: null,
+    };
+  }
+  if (tier <= existing.masteryTier) {
     return { state, unlocked: false, previousTier: existing.masteryTier };
   }
 
-  const entry: CollectionEntry = {
-    questionId: mastery.questionId,
-    rarity: rarityForAct(actOfQuestion(mastery.questionId)),
-    obtainedAt: now,
-    masteryTier: masteryTierFor(COLLECTION_ENTRY_MIN_INTERVAL_DAYS),
-  };
-
+  // Palier franchi : l'entrée évolue, la date d'obtention est conservée.
+  const upgraded: CollectionEntry = { ...existing, masteryTier: tier };
   return {
-    state: { entries: [...state.entries, entry] },
-    unlocked: true,
-    previousTier: null,
+    state: {
+      entries: state.entries.map((entry) =>
+        entry.questionId === existing.questionId ? upgraded : entry,
+      ),
+    },
+    unlocked: false,
+    previousTier: existing.masteryTier,
   };
 }
 

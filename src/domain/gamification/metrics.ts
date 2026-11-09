@@ -1,5 +1,5 @@
-import { ACCURACY_CREDIT, ACT_COUNT, DAY_MS, QUESTIONS_PER_ACT } from '@/domain/shared/types';
-import type { DrillDirection, QuestionId, Ratio, ReviewGrade } from '@/domain/shared/types';
+import { ACCURACY_CREDIT, ACT_IDS, DAY_MS, QUESTIONS_PER_ACT } from '@/domain/shared/types';
+import type { ActId, DrillDirection, QuestionId, Ratio, ReviewGrade } from '@/domain/shared/types';
 import type { ReviewLog } from '@/domain/srs/types';
 import type { DirectionMetrics, MetricsCalculator, MetricsInput, PlayerMetrics } from './types';
 import { PERFECT_SESSION_MIN_ITEMS } from './xp';
@@ -12,7 +12,10 @@ import { PERFECT_SESSION_MIN_ITEMS } from './xp';
  *   `SessionLog`, donc aucun chiffre ne peut diverger ni flatter le joueur ;
  * - **pas de punition** : une précision est une moyenne pondérée par
  *   `ACCURACY_CREDIT` (un `hard` vaut un demi-succès), jamais un compteur de
- *   fautes.
+ *   fautes ;
+ * - **pas de reconnaissance déguisée en rappel** : toute métrique qui prétend
+ *   mesurer une production filtre `exerciseKind === 'production'`. Un QCM ne
+ *   produit donc ni précision, ni réponse « sans indice », ni session parfaite.
  *
  * Anti-objectif L12 : `calibrationGap` est l'écart moyen
  * `|confiance / 5 − crédit|` ; il vaut `null` sans jugement de confiance, pour
@@ -32,7 +35,12 @@ function creditOf(grade: ReviewGrade): number {
   return ACCURACY_CREDIT[grade];
 }
 
-/** Métriques d'une direction de drill. */
+/**
+ * Métriques d'une direction de drill.
+ *
+ * `logs` ne contient que des **productions** (filtre appliqué par `compute`) :
+ * la discrimination ne mesure pas la restitution d'une direction.
+ */
 function directionMetrics(logs: readonly ReviewLog[], direction: DrillDirection): DirectionMetrics {
   const own = logs.filter((log) => log.direction === direction);
   const correct = own.filter((log) => log.grade !== 'again').length;
@@ -45,29 +53,44 @@ function directionMetrics(logs: readonly ReviewLog[], direction: DrillDirection)
 }
 
 /**
- * Nombre d'actes dont les 12 questions sont maîtrisées.
+ * Ensemble exact des actes dont les 12 questions sont maîtrisées.
  *
  * La source unique des seuils de maîtrise est `mastery` : ce module ne décide
- * jamais ce qu'est « maîtrisé », il compte.
+ * jamais ce qu'est « maîtrisé », il vérifie l'appartenance.
  */
-function countMasteredActs(mastery: MetricsInput['mastery']): number {
-  const masteredIds = new Set<QuestionId>(
+function masteredActIds(mastery: MetricsInput['mastery']): readonly ActId[] {
+  const masteredQuestions = new Set<QuestionId>(
     mastery.filter((question) => question.mastered).map((question) => question.questionId),
   );
-  let masteredActs = 0;
-  for (let actIndex = 0; actIndex < ACT_COUNT; actIndex += 1) {
+  const mastered: ActId[] = [];
+  for (const actId of ACT_IDS) {
     let complete = true;
     for (let position = 1; position <= QUESTIONS_PER_ACT; position += 1) {
-      if (!masteredIds.has(actIndex * QUESTIONS_PER_ACT + position)) {
+      if (!masteredQuestions.has((actId - 1) * QUESTIONS_PER_ACT + position)) {
         complete = false;
         break;
       }
     }
     if (complete) {
-      masteredActs += 1;
+      mastered.push(actId);
     }
   }
-  return masteredActs;
+  return mastered;
+}
+
+/**
+ * Une session est parfaite si elle est **entièrement composée de productions**
+ * (aucun QCM), sans aucune erreur, et d'au moins
+ * `PERFECT_SESSION_MIN_ITEMS` items.
+ */
+function isPerfectProductionSession(session: MetricsInput['sessionLogs'][number]): boolean {
+  return (
+    session.itemCount >= PERFECT_SESSION_MIN_ITEMS &&
+    session.itemCount > 0 &&
+    session.productionCount === session.itemCount &&
+    session.discriminationCount === 0 &&
+    session.correctCount === session.itemCount
+  );
 }
 
 /**
@@ -90,7 +113,12 @@ function longestGapDays(logs: readonly ReviewLog[]): number {
   }, 0);
 }
 
-/** Écart moyen entre confiance déclarée et réussite réelle, `null` sans donnée. */
+/**
+ * Écart moyen entre confiance déclarée et réussite réelle, `null` sans donnée.
+ *
+ * Les journaux reçus sont des productions : un jugement de confiance porte sur
+ * une tentative de restitution, pas sur un choix parmi quatre options.
+ */
 function calibrationGap(logs: readonly ReviewLog[]): Ratio | null {
   const rated: { readonly confidence: number; readonly credit: number }[] = [];
   for (const log of logs) {
@@ -107,45 +135,52 @@ function calibrationGap(logs: readonly ReviewLog[]): Ratio | null {
 /**
  * Recalcule toutes les métriques affichées.
  *
- * `MetricsInput.cards` est fourni par le contrat mais n'alimente aucune métrique
- * exposée : `masteredQuestions`/`masteredActs` viennent de `mastery`, source
- * unique des seuils (aucune duplication de critère dans ce module).
+ * `masteredQuestions`/`masteredActIds` viennent de `mastery`, source unique des
+ * seuils : aucune duplication de critère dans ce module.
  */
 function compute(input: MetricsInput): PlayerMetrics {
   const { reviewLogs, sessionLogs, mastery, hooksCount, collection, streak } = input;
+  // Filtre de production : aucune métrique de restitution ne lit un QCM.
   const productionLogs = reviewLogs.filter((log) => log.exerciseKind === 'production');
-  const hintFreeLogs = reviewLogs.filter((log) => log.hintsUsed === 0);
+  // Réponses de production sans aucun indice (L9) : la discrimination exclue.
+  const hintFreeLogs = productionLogs.filter((log) => log.hintsUsed === 0);
+  const perfectSessions = sessionLogs.filter(isPerfectProductionSession);
+  const actIds = masteredActIds(mastery);
   const answersByDirection: Record<DrillDirection, DirectionMetrics> = {
-    'order-to-question': directionMetrics(reviewLogs, 'order-to-question'),
-    'keyword-to-question': directionMetrics(reviewLogs, 'keyword-to-question'),
-    'image-to-question': directionMetrics(reviewLogs, 'image-to-question'),
-    'number-to-question': directionMetrics(reviewLogs, 'number-to-question'),
-    'question-to-number': directionMetrics(reviewLogs, 'question-to-number'),
+    'order-to-question': directionMetrics(productionLogs, 'order-to-question'),
+    'keyword-to-question': directionMetrics(productionLogs, 'keyword-to-question'),
+    'image-to-question': directionMetrics(productionLogs, 'image-to-question'),
+    'number-to-question': directionMetrics(productionLogs, 'number-to-question'),
+    'question-to-number': directionMetrics(productionLogs, 'question-to-number'),
   };
 
   return {
     totalAnswers: reviewLogs.length,
     productionAnswers: productionLogs.length,
     correctProductionAnswers: productionLogs.filter((log) => log.grade !== 'again').length,
-    distinctQuestionsAnswered: new Set(reviewLogs.map((log) => log.questionId)).size,
+    distinctQuestionsAnswered: new Set(productionLogs.map((log) => log.questionId)).size,
     masteredQuestions: mastery.filter((question) => question.mastered).length,
-    masteredActs: countMasteredActs(mastery),
+    masteredActs: actIds.length,
+    masteredActIds: actIds,
     bestStreakDays: streak.longest,
-    perfectSessions: sessionLogs.filter(
-      (session) =>
-        session.itemCount >= PERFECT_SESSION_MIN_ITEMS &&
-        session.correctCount === session.itemCount,
-    ).length,
+    perfectSessions: perfectSessions.length,
+    bestPerfectSessionItemCount: perfectSessions.reduce(
+      (best, session) => Math.max(best, session.itemCount),
+      0,
+    ),
     collectionSize: collection.entries.length,
     personalHooks: hooksCount,
     oralExamPasses: input.oralExamPasses,
     eveningSessions: sessionLogs.filter((session) => session.window === 'evening').length,
     morningSessions: sessionLogs.filter((session) => session.window === 'morning').length,
     hintFreeAnswers: hintFreeLogs.length,
-    hintFreeAccuracy: mean(hintFreeLogs.map((log) => creditOf(log.grade))),
+    hintFreeAccuracy:
+      hintFreeLogs.length === 0 ? null : mean(hintFreeLogs.map((log) => creditOf(log.grade))),
     longestGapDays: longestGapDays(reviewLogs),
     answersByDirection,
-    calibrationGap: calibrationGap(reviewLogs),
+    calibrationGap: calibrationGap(productionLogs),
+    calibrationAnswers: productionLogs.filter((log) => log.confidence !== null).length,
+    bestOralExam: input.bestOralExam,
   };
 }
 

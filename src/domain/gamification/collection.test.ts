@@ -15,7 +15,7 @@ import { COLLECTION_MASTERY_TIER_DAYS } from './types';
  * Anti-objectifs servis (docs/ARCHITECTURE.md § 8.6) :
  * - « pas de récompense sans production » : aucune carte avant la maîtrise ;
  * - « pas de rareté artificielle » : la rareté dérive de l’acte, et les 5 paliers
- *   de maîtrise (21 → 180 jours) sont atteignables ;
+ *   de maîtrise (21 → 180 jours) sont atteignables et réellement écrits ;
  * - « pas de doublon » : une question n’est jamais collectionnée deux fois.
  */
 
@@ -34,6 +34,7 @@ describe('collection — obtention à la maîtrise', () => {
     const result = collectionEvaluator.update({
       state: EMPTY_COLLECTION,
       mastery: mastery(7, false),
+      intervalDays: 21,
       now: 1000,
     });
     expect(result.unlocked).toBe(false);
@@ -45,6 +46,7 @@ describe('collection — obtention à la maîtrise', () => {
     const result = collectionEvaluator.update({
       state: EMPTY_COLLECTION,
       mastery: mastery(7, true),
+      intervalDays: 21,
       now: 1000,
     });
     expect(result.unlocked).toBe(true);
@@ -58,11 +60,13 @@ describe('collection — obtention à la maîtrise', () => {
     const first = collectionEvaluator.update({
       state: EMPTY_COLLECTION,
       mastery: mastery(30, true),
+      intervalDays: 21,
       now: 1000,
     });
     const second = collectionEvaluator.update({
       state: first.state,
       mastery: mastery(30, true),
+      intervalDays: 21,
       now: 2000,
     });
     expect(second.unlocked).toBe(false);
@@ -75,11 +79,13 @@ describe('collection — obtention à la maîtrise', () => {
     const first = collectionEvaluator.update({
       state: EMPTY_COLLECTION,
       mastery: mastery(4, true),
+      intervalDays: 21,
       now: 1000,
     });
     const regressed = collectionEvaluator.update({
       state: first.state,
       mastery: mastery(4, false),
+      intervalDays: 21,
       now: 2000,
     });
     expect(regressed.unlocked).toBe(false);
@@ -107,6 +113,7 @@ describe('collection — obtention à la maîtrise', () => {
       const result = collectionEvaluator.update({
         state,
         mastery: mastery(questionId, true),
+        intervalDays: 21,
         now: questionId,
       });
       expect(result.unlocked).toBe(true);
@@ -140,5 +147,72 @@ describe('collection — cinq paliers atteignables', () => {
   it('atteint chaque palier en atteignant chaque seuil du contrat', () => {
     const tiers = COLLECTION_MASTERY_TIER_DAYS.map((days) => masteryTierFor(days));
     expect(tiers).toEqual([1, 2, 3, 4, 5]);
+  });
+
+  it('fait évoluer une entrée existante à chaque palier franchi', () => {
+    let state = EMPTY_COLLECTION;
+    const observed: number[] = [];
+
+    for (const [index, intervalDays] of COLLECTION_MASTERY_TIER_DAYS.entries()) {
+      const result = collectionEvaluator.update({
+        state,
+        mastery: mastery(13, true),
+        intervalDays,
+        now: 1000 + index,
+      });
+      state = result.state;
+      observed.push(state.entries[0]?.masteryTier ?? -1);
+      // Le palier attendu est celui du seuil courant : `index + 1`.
+      expect(result.previousTier).toBe(index === 0 ? null : index);
+      expect(result.unlocked).toBe(index === 0);
+    }
+
+    // Les cinq paliers sont écrits, dans l’ordre, sur une seule et même carte.
+    expect(observed).toEqual([1, 2, 3, 4, 5]);
+    expect(state.entries).toHaveLength(1);
+    expect(state.entries[0]?.obtainedAt).toBe(1000);
+    expect(state.entries[0]?.rarity).toBe('rare');
+  });
+
+  it('ne rétrograde jamais un palier quand l’intervalle régresse', () => {
+    const high = collectionEvaluator.update({
+      state: EMPTY_COLLECTION,
+      mastery: mastery(2, true),
+      intervalDays: 180,
+      now: 1000,
+    });
+    expect(high.state.entries[0]?.masteryTier).toBe(5);
+
+    const low = collectionEvaluator.update({
+      state: high.state,
+      mastery: mastery(2, true),
+      intervalDays: 21,
+      now: 2000,
+    });
+    expect(low.state).toEqual(high.state);
+    expect(low.previousTier).toBe(5);
+    expect(low.unlocked).toBe(false);
+  });
+
+  it('recalcule le palier à chaque évaluation, même sans maîtrise nouvelle', () => {
+    const unlocked = collectionEvaluator.update({
+      state: EMPTY_COLLECTION,
+      mastery: mastery(25, true),
+      intervalDays: 21,
+      now: 1000,
+    });
+    const upgraded = collectionEvaluator.update({
+      state: unlocked.state,
+      mastery: mastery(25, true),
+      intervalDays: 120,
+      now: 2000,
+    });
+    expect(upgraded).toEqual({
+      state: {
+        entries: [{ questionId: 25, rarity: 'epic', obtainedAt: 1000, masteryTier: 4 }],
+      },
+      unlocked: false,
+      previousTier: 1,
+    });
   });
 });

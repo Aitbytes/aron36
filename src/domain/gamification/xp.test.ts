@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { DRILL_DIRECTIONS, REVIEW_GRADES } from '@/domain/shared/types';
 import type { DrillDirection, ExerciseKind } from '@/domain/shared/types';
 import { antiFarmFactorFor, xpCalculator } from './xp';
-import type { AnswerXpInput, LevelState, XpContext, XpRules } from './types';
+import type { AnswerXpInput, XpContext, XpRules } from './types';
 import { XP_RULES } from './types';
 
 /**
@@ -14,19 +14,9 @@ import { XP_RULES } from './types';
  * - « pas de punition » : jamais de montant négatif.
  */
 
-const LEVEL: LevelState = {
-  level: 1,
-  xpIntoLevel: 0,
-  xpToNextLevel: 100,
-  nextLevelXp: 100,
-  progressRatio: 0,
-  title: { fr: 'Novice', en: 'Novice' },
-};
-
 function context(overrides: Partial<XpContext> = {}): XpContext {
   return {
     rules: XP_RULES,
-    level: LEVEL,
     sameDayAnswersForQuestion: 0,
     isFirstExposure: false,
     now: 1_700_000_000_000,
@@ -315,6 +305,15 @@ describe('xp — bonus de session', () => {
         context(),
       ).amount,
     ).toBe(XP_RULES.sessionCompletionXp);
+  });
+
+  it('n’accorde pas le bonus parfait à une session 100 % QCM', () => {
+    const award = xpCalculator.forSession(
+      { sessionId: 's-qcm', itemCount: 12, productionCount: 0, correctCount: 12 },
+      context(),
+    );
+    expect(award.amount).toBe(XP_RULES.sessionCompletionXp);
+    expect(award.reason).toBe('session-complete');
   });
 
   it('ne donne jamais un montant négatif ni un détail incohérent', () => {

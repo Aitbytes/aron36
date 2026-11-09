@@ -316,9 +316,10 @@ function coveredDirections(metrics: PlayerMetrics): number {
 /**
  * Progression (`progress`, `target`) vers une condition.
  *
- * `PlayerMetrics` ne porte pas toutes les informations de chaque condition ; les
- * cas concernés sont documentés sur place et signalés comme points à arbitrer
- * dans le rapport de lot.
+ * Chaque condition est évaluée sur les faits exposés par `PlayerMetrics`,
+ * jamais sur un proxy : `perfect-session` lit la taille réelle de la meilleure
+ * session parfaite, `oral-exam` la durée et la précision mesurées,
+ * `calibration` le nombre de jugements de confiance.
  */
 export function conditionProgress(
   condition: BadgeCondition,
@@ -330,36 +331,42 @@ export function conditionProgress(
       return { progress: Math.min(metricValue(metrics, condition.metric), target), target };
     }
     case 'direction-accuracy': {
+      // `answersByDirection` ne compte que des productions : un QCM ne peut
+      // pas donner une précision de direction.
       const direction = metrics.answersByDirection[condition.direction];
       const target = condition.minAnswers;
       const qualifying = direction.accuracy >= condition.minAccuracy ? direction.attempts : 0;
       return { progress: Math.min(qualifying, target), target };
     }
     case 'act-mastered': {
-      // Les actes se débloquent dans l'ordre (L14) : `masteredActs >= actId`
-      // vaut « les actes 1..actId sont maîtrisés ».
-      const target = condition.actId;
-      return { progress: Math.min(metrics.masteredActs, target), target };
+      // Appartenance à l'ensemble exact des actes maîtrisés. Un compteur
+      // laisserait passer « actes I + III maîtrisés » pour l'acte II.
+      const target = 1;
+      return { progress: metrics.masteredActIds.includes(condition.actId) ? target : 0, target };
     }
     case 'all-acts-mastered': {
       const target = ACT_COUNT;
-      return { progress: Math.min(metrics.masteredActs, target), target };
+      return { progress: Math.min(metrics.masteredActIds.length, target), target };
     }
-    case 'perfect-session':
-      // `PlayerMetrics.perfectSessions` ne conserve pas la taille des sessions :
-      // `minItems` n'est pas vérifiable, seule l'existence d'une session parfaite
-      // (≥ `PERFECT_SESSION_MIN_ITEMS` items) l'est.
-      return { progress: Math.min(metrics.perfectSessions, 1), target: 1 };
-    case 'oral-exam':
-      // `oralExamPasses` ne conserve ni durée ni précision : seul le nombre de
-      // Grands Oraux réussis est disponible.
-      return { progress: Math.min(metrics.oralExamPasses, 1), target: 1 };
+    case 'perfect-session': {
+      // Taille réelle de la meilleure session parfaite 100 % production.
+      const target = condition.minItems;
+      return { progress: Math.min(metrics.bestPerfectSessionItemCount, target), target };
+    }
+    case 'oral-exam': {
+      const exam = metrics.bestOralExam;
+      const passed =
+        exam !== null &&
+        exam.durationMs <= condition.maxDurationMs &&
+        exam.accuracy >= condition.minAccuracy;
+      return { progress: passed ? 1 : 0, target: 1 };
+    }
     case 'calibration': {
       const gap = metrics.calibrationGap;
       const aligned = gap !== null && gap <= condition.maxGap;
-      // `PlayerMetrics` ne porte pas le nombre de réponses avec confiance :
-      // `minAnswers` n'est pas vérifiable.
-      return { progress: aligned ? 1 : 0, target: 1 };
+      const target = condition.minAnswers;
+      // L'écart doit être tenu sur un nombre réel de jugements de confiance.
+      return { progress: aligned ? Math.min(metrics.calibrationAnswers, target) : 0, target };
     }
     case 'comeback': {
       const target = condition.daysAway;
@@ -371,9 +378,11 @@ export function conditionProgress(
     }
     case 'hint-free': {
       const target = condition.minAnswers;
-      const qualifying =
-        metrics.hintFreeAccuracy >= condition.minAccuracy ? metrics.hintFreeAnswers : 0;
-      return { progress: Math.min(qualifying, target), target };
+      // `hintFreeAccuracy` vaut `null` sans production sans indice : un QCM
+      // n'ouvre donc jamais ce badge.
+      const accuracy = metrics.hintFreeAccuracy;
+      const qualifying = accuracy !== null && accuracy >= condition.minAccuracy;
+      return { progress: qualifying ? Math.min(metrics.hintFreeAnswers, target) : 0, target };
     }
   }
 }
