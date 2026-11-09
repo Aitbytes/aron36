@@ -173,27 +173,41 @@ src/
 
 ### 3.1 Domaine
 
-| Module                | Responsabilité                                                               | Importe                                              | Expose                                                   |
-| --------------------- | ---------------------------------------------------------------------------- | ---------------------------------------------------- | -------------------------------------------------------- |
-| `domain/shared`       | Vocabulaire commun : unités, ids, directions, notes, constantes du protocole | rien                                                 | types et constantes                                      |
-| `domain/questions`    | Contenu et invariants des 36 questions, actes, métadonnées de dataset        | `shared`, `memory` (type `MemoryFilm`)               | `QuestionItem`, `QuestionCatalog`, `QuestionDataset`     |
-| `domain/memory`       | Films mentaux, scènes chaînées, accroches personnelles                       | `shared`                                             | `MemoryFilm`, `PersonalHook`, `HookLibrary`              |
-| `domain/srs`          | État des cartes, ordonnanceur, journal de révision                           | `shared`                                             | `CardState`, `Scheduler`, `ScheduledReview`, `ReviewLog` |
-| `domain/mastery`      | Maîtrise par question/direction/acte, déblocage                              | `shared`, `srs`                                      | `MasteryEvaluator`, `MasterySnapshot`                    |
-| `domain/session`      | Construction de plan, directions, indices, machine à états                   | `shared`, `srs`, `questions`, `memory`               | `SessionBuilder`, `SessionEngine`, `SessionPlan`         |
-| `domain/gamification` | XP, niveaux, séries, badges, quêtes, collection, métriques                   | `shared` (+ valeur `QUESTION_COUNT`)                 | barèmes, types, évaluateurs                              |
-| `domain/progress`     | Agrégat persisté, version de schéma, codec, migrations                       | `shared`, `memory`, `srs`, `session`, `gamification` | `PersistedProgress`, `ProgressCodec`, `Migration`        |
+| Module                | Responsabilité                                                               | Importe                                              | Expose                                                                                                           |
+| --------------------- | ---------------------------------------------------------------------------- | ---------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| `domain/shared`       | Vocabulaire commun : unités, ids, directions, notes, constantes du protocole | rien                                                 | types et constantes                                                                                              |
+| `domain/questions`    | Contenu et invariants des 36 questions, actes, métadonnées de dataset        | `shared`, `memory` (type `MemoryFilm`)               | `QuestionItem`, `QuestionCatalog`, `QuestionDataset`                                                             |
+| `domain/memory`       | Films mentaux, scènes chaînées, accroches personnelles                       | `shared`                                             | `MemoryFilm`, `PersonalHook`, `HookLibrary`                                                                      |
+| `domain/srs`          | État des cartes, ordonnanceur, journal de révision                           | `shared`                                             | `CardState`, `Scheduler`, `ScheduledReview`, `ReviewLog`                                                         |
+| `domain/mastery`      | Maîtrise par question/direction/acte, déblocage                              | `shared`, `srs`                                      | `MasteryEvaluator`, `MasterySnapshot`                                                                            |
+| `domain/session`      | Construction de plan, directions, indices, machine à états                   | `shared`, `srs`, `questions`, `memory`               | `SessionBuilder`, `SessionEngine`, `SessionPlan`                                                                 |
+| `domain/gamification` | XP, niveaux, séries, badges, quêtes, collection, métriques                   | `shared`, `srs`, `session`, `mastery`                | `XpCalculator`, `LevelCalculator`, `StreakUpdater`, `QuestGenerator`, `CollectionEvaluator`, `MetricsCalculator` |
+| `domain/progress`     | Agrégat persisté, version de schéma, codec, migrations                       | `shared`, `memory`, `srs`, `session`, `gamification` | `PersistedProgress`, `ProgressCodec`, `Migration`                                                                |
 
 Le domaine est **synchrone** : aucun `Promise`, aucun timer, aucun effet de bord.
 Les fonctions de Phase 2 sont pures : mêmes entrées ⇒ mêmes sorties.
 
+**Pourquoi `gamification` dépend de `mastery`.** `PlayerMetrics` expose
+`masteredQuestions` / `masteredActs`, et la condition de badge `act-mastered`
+exige les critères de maîtrise. Interdire cette arête rendait ces valeurs
+incalculables et dupliquait le seuil « maîtrisé » en deux endroits. Cycle
+impossible : `mastery → srs → shared`, et aucun module ne dépend en retour de
+`gamification` (les journaux ne portent qu'un `xpAwarded: number`).
+
+**Unités numériques (ADR 0009).** `EpochMs`, `DurationMs`, `Days`, `Minutes`,
+`Ratio` et `Percentage` ne sont pas distingués par le système de types. En
+contrepartie, `NUMERIC_BOUNDS` (`domain/shared/types.ts`) fixe à l'exécution les
+bornes de chaque champ borné, et **tout décodage d'une donnée non fiable**
+(stockage, import, saisie) doit l'appliquer. Test de référence :
+`contracts.test.ts › "fournit des bornes d'exécution pour les champs numériques"`.
+
 ### 3.2 Application
 
-| Module                 | Responsabilité                                       | Importe        | Expose                                                 |
-| ---------------------- | ---------------------------------------------------- | -------------- | ------------------------------------------------------ |
-| `application/ports`    | Contrats d'I/O (temps, aléa, stockage, voix)         | `shared`       | `ClockPort`, `RandomPort`, `StoragePort`, `SpeechPort` |
-| `application/store`    | État racine, actions, abonnements                    | domaine, ports | `AppState`, `AppAction`, `AppStore`                    |
-| `application/usecases` | Orchestration : sélection, notation, XP, persistance | domaine, ports | `AppServices`, `UseCases`, entrées/sorties             |
+| Module                 | Responsabilité                                       | Importe        | Expose                                                           |
+| ---------------------- | ---------------------------------------------------- | -------------- | ---------------------------------------------------------------- |
+| `application/ports`    | Contrats d'I/O (temps, aléa, stockage, voix, ids)    | `shared`       | `ClockPort`, `RandomPort`, `StoragePort`, `SpeechPort`, `IdPort` |
+| `application/store`    | État racine, actions, abonnements                    | domaine, ports | `AppState`, `AppAction`, `AppStore`                              |
+| `application/usecases` | Orchestration : sélection, notation, XP, persistance | domaine, ports | `AppServices`, `UseCases`, entrées/sorties                       |
 
 Les cas d'usage sont l'**unique** endroit où l'on combine domaine + ports. Ils
 renvoient des résultats explicites et ne lèvent pas d'exception d'I/O.
@@ -224,6 +238,9 @@ graph TD
   SESSION --> QUESTIONS
   SESSION --> MEMORY
   GAME[domain/gamification] --> SHARED
+  GAME --> SRS
+  GAME --> SESSION
+  GAME --> MASTERY
   PROGRESS[domain/progress] --> SHARED
   PROGRESS --> MEMORY
   PROGRESS --> SRS
@@ -374,8 +391,13 @@ interface Migration {
 
 - Une migration est **pure**, ne lit jamais le stockage et ne dépend pas de
   l'horloge.
-- Le registre est ordonné ; un trou ou une version inconnue produit
-  `unsupported-version` ou `missing-migration`.
+- Règle exacte des versions : `schemaVersion < MIN_SUPPORTED_SCHEMA_VERSION` ⇒
+  `unsupported-version` ; un trou dans la chaîne de migrations ⇒
+  `missing-migration` ; `schemaVersion > MAX_SUPPORTED_SCHEMA_VERSION` ⇒ statut
+  **`future-version`**, en **lecture seule** (aucune migration, aucune écriture,
+  aucune réinitialisation : l'UI invite à mettre à jour l'application). La table
+  `PROGRESS_RECOVERY_ACTIONS` fixe l'action UI de chaque code d'erreur, et
+  `contracts.test.ts › "traite une version future comme non destructive"` la vérifie.
 - Toute migration est couverte par un test avec une fixture JSON figée de la
   version source.
 - v0 → v1 (Phase 3) : les boîtes de Leitner (`box` 1..5) sont converties en
@@ -500,8 +522,21 @@ utilisent une horloge fixe (`FakeClock`) et des cartes construites à la main :
 | `number-to-question`  | `number` (1..36)                | texte de la question |
 | `question-to-number`  | `question`                      | numéro 1..36         |
 
-Le mapping est **total et exhaustif** : `SessionCue` est une union discriminée et
-le compilateur refuse une direction non couverte.
+Le mapping n'est pas seulement documenté : `DrillCueMap` et
+`DrillExpectedAnswerMap` sont indexés par `DrillDirection`, et `SessionItem` est
+une **union indexée par la direction** (`ProductionSessionItem` /
+`DiscriminationSessionItem`). Le compilateur refuse donc un couple
+direction/indice incohérent — par exemple `image-to-question` avec un indice
+`order` — ainsi qu'une réponse attendue incohérente. Preuve :
+`contracts.test.ts › "garantit au niveau du type l'appariement direction → indice"`.
+
+Le domaine n'a **aucune source de temps** : `SessionEngine.start(plan, now)` et
+`SessionAnswerInput.now` reçoivent l'instant de la couche application, et
+`SessionEngine.submitAnswer` renvoie un `SessionSubmissionResult` rejetable
+(`wrong-phase`, `unknown-item`, `item-already-answered`, `session-completed`).
+Les identifiants de session et de journal sont eux aussi fournis par
+l'application (`IdPort`) : `SessionRequest.sessionId` est recopié tel quel dans
+`SessionPlan.id`.
 
 ### 7.2 Construction d'un plan
 
@@ -672,9 +707,15 @@ artificielle, pas d'incitation anxiogène).
 
 Une carte est obtenue quand sa question devient **maîtrisée** (critère § 6.4 +
 couverture des directions). Rareté : acte I `common`, acte II `rare`, acte III
-`epic`. `masteryTier` (1..5) reflète l'intervalle SRS atteint via
-`COLLECTION_MASTERY_TIER_DAYS` (1, 7, 21, 60, 120 jours). La collection est
+`epic`. `COLLECTION_ENTRY_MIN_INTERVAL_DAYS` (21 jours) est aligné sur
+`DEFAULT_MASTERY_CRITERIA.minIntervalDays` : on n'obtient pas une carte en
+réussissant une question une fois. `masteryTier` (1..5) reflète l'intervalle SRS
+atteint via `COLLECTION_MASTERY_TIER_DAYS` (**21, 40, 70, 120, 180** jours) : le
+premier palier est acquis à la maîtrise, le dernier correspond à
+`maxIntervalDays`, donc **aucun palier n'est inatteignable**. La collection est
 purement cosmétique : elle ne débloque aucune mécanique payante ou exclusive.
+Test de référence : `contracts.test.ts › "rend tous les paliers de collection
+atteignables"`.
 
 ### 8.7 Anti-objectifs vérifiés par test
 
@@ -707,7 +748,7 @@ mécanisme n'est laissé sans preuve.
 | L13 | Feedback correctif           | `session`                 | `AnswerFeedback`, `ErrorSignal`                                  | `session/engine.test.ts › "le feedback contient réponse, image et signal"`                                                              |
 | L14 | Apprentissage de maîtrise    | `mastery`                 | `MasteryEvaluator`, `actUnlockRatio`                             | `mastery/evaluator.test.ts › "acte suivant verrouillé sous 90 %"`                                                                       |
 | L15 | Sur-apprentissage            | `session`, `gamification` | mode `speed`, `speedTargetMs`, bonus de rapidité                 | `session/builder.test.ts › "speed refusé avant maîtrise"` ; `gamification/xp.test.ts › "bonus de rapidité plafonné"`                    |
-| L16 | Variation contextuelle       | `session/shared`          | `DRILL_DIRECTIONS`, `SessionCue`                                 | `session/directions.test.ts › "les 5 directions produisent les bons indices"` ; `contracts.test.ts`                                     |
+| L16 | Variation contextuelle       | `shared`, `session`       | `DRILL_DIRECTIONS`, `DrillCueMap`, `SessionItem`                 | `session/directions.test.ts › "les 5 directions produisent les bons indices"` ; `contracts.test.ts › "appariement direction → indice"`  |
 | L17 | Consolidation par le sommeil | `session`, `gamification` | `SessionWindow`, quêtes soir/matin                               | `gamification/quests.test.ts › "quêtes soir et matin"` ; `session/engine.test.ts › "fenêtre calculée par ClockPort"`                    |
 | L18 | Prétest / génération erronée | `session`                 | `SessionItem.isPretest`, mode `discovery`                        | `session/engine.test.ts › "la devinette n'est pas journalisée, la tentative graduée oui"`                                               |
 
@@ -802,6 +843,7 @@ Cible : **WCAG 2.2 niveau AA**.
 | `npm run build`                   | `tsc --noEmit` + build Vite dans `dist/` |
 | `npm run preview`                 | prévisualisation du build                |
 | `npm test`                        | Vitest en mode CI                        |
+| `npm run test:watch`              | Vitest en mode veille                    |
 | `npm run test:coverage`           | Vitest + couverture V8                   |
 | `npm run lint` / `lint:fix`       | ESLint flat config                       |
 | `npm run typecheck`               | TypeScript strict, sans émission         |

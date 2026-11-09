@@ -12,6 +12,7 @@ import type {
   Ratio,
   ReviewGrade,
   SessionId,
+  SessionWindow,
 } from '@/domain/shared/types';
 import type { CardState, ReviewLog } from '@/domain/srs/types';
 import type { QuestionCatalog } from '@/domain/questions/types';
@@ -60,16 +61,7 @@ export interface Hint {
   readonly content: LocalizedText;
 }
 
-/**
- * Indice de départ présenté à l'apprenant.
- *
- * Le mapping direction → indice est fixe :
- * - `order-to-question` → `order` ;
- * - `keyword-to-question` → `keyword` ;
- * - `image-to-question` → `image` ;
- * - `number-to-question` → `number` ;
- * - `question-to-number` → `question`.
- */
+/** Indice de départ : l'un des cinq indices possibles (L16). */
 export type SessionCue =
   | { readonly kind: 'order'; readonly actId: ActId; readonly positionInAct: PositionInAct }
   | { readonly kind: 'keyword'; readonly text: LocalizedText }
@@ -77,10 +69,49 @@ export type SessionCue =
   | { readonly kind: 'number'; readonly questionNumber: QuestionId }
   | { readonly kind: 'question'; readonly text: LocalizedText };
 
+/**
+ * Indice **imposé** par chaque direction de drill (L16).
+ *
+ * C'est la table de vérité du mécanisme : elle est indexée par `DrillDirection`,
+ * donc le compilateur refuse tout couple direction/indice incohérent dès qu'elle
+ * est utilisée (une direction absente de la table est une erreur de compilation).
+ */
+export interface DrillCueMap {
+  readonly 'order-to-question': {
+    readonly kind: 'order';
+    readonly actId: ActId;
+    readonly positionInAct: PositionInAct;
+  };
+  readonly 'keyword-to-question': { readonly kind: 'keyword'; readonly text: LocalizedText };
+  readonly 'image-to-question': { readonly kind: 'image'; readonly text: LocalizedText };
+  readonly 'number-to-question': { readonly kind: 'number'; readonly questionNumber: QuestionId };
+  readonly 'question-to-number': { readonly kind: 'question'; readonly text: LocalizedText };
+}
+
+/** Indice autorisé pour une direction donnée. */
+export type CueForDirection<D extends DrillDirection> = DrillCueMap[D];
+
 /** Réponse attendue : texte de la question, ou numéro global. */
 export type ExpectedAnswer =
   | { readonly kind: 'question'; readonly text: LocalizedText }
   | { readonly kind: 'number'; readonly questionNumber: QuestionId };
+
+/**
+ * Nature de la réponse attendue, imposée par la direction de drill.
+ *
+ * `question-to-number` est la seule direction inversée : la réponse attendue est
+ * alors le numéro global, jamais le texte de la question.
+ */
+export interface DrillExpectedAnswerMap {
+  readonly 'order-to-question': { readonly kind: 'question'; readonly text: LocalizedText };
+  readonly 'keyword-to-question': { readonly kind: 'question'; readonly text: LocalizedText };
+  readonly 'image-to-question': { readonly kind: 'question'; readonly text: LocalizedText };
+  readonly 'number-to-question': { readonly kind: 'question'; readonly text: LocalizedText };
+  readonly 'question-to-number': { readonly kind: 'number'; readonly questionNumber: QuestionId };
+}
+
+/** Réponse attendue autorisée pour une direction donnée. */
+export type ExpectedAnswerForDirection<D extends DrillDirection> = DrillExpectedAnswerMap[D];
 
 /** Option d'un exercice de discrimination (QCM étiqueté). */
 export interface DiscriminationOption {
@@ -89,14 +120,12 @@ export interface DiscriminationOption {
   readonly label: LocalizedText;
 }
 
-interface SessionItemBase {
+/** Champs communs à tout item, quelle que soit la direction ou la nature. */
+interface SessionItemCommon {
   /** Identifiant stable dans la session, `${sessionId}:${index}`. */
   readonly id: string;
   readonly questionId: QuestionId;
   readonly actId: ActId;
-  readonly direction: DrillDirection;
-  readonly cue: SessionCue;
-  readonly expectedAnswer: ExpectedAnswer;
   /** Image mentale de la réponse, utilisée par le feedback (L13). */
   readonly mentalImage: LocalizedText;
   /** Indices ordonnés du plus faible au plus fort, jamais vides. */
@@ -109,20 +138,42 @@ interface SessionItemBase {
   readonly isPretest: boolean;
 }
 
-/** Item de production : aucune option proposée. */
-export interface ProductionSessionItem extends SessionItemBase {
+/** Item de production d'une direction donnée : aucune option proposée. */
+type ProductionItemFor<D extends DrillDirection> = SessionItemCommon & {
   readonly exerciseKind: Extract<ExerciseKind, 'production'>;
-}
+  readonly direction: D;
+  readonly cue: CueForDirection<D>;
+  readonly expectedAnswer: ExpectedAnswerForDirection<D>;
+};
 
-/** Item de discrimination : QCM explicitement étiqueté, jamais majoritaire. */
-export interface DiscriminationSessionItem extends SessionItemBase {
+/**
+ * Item de production.
+ *
+ * Union indexée par la direction : `direction` et `cue` (ainsi que
+ * `expectedAnswer`) ne peuvent pas être incohérents, le compilateur refuse par
+ * exemple `{ direction: 'image-to-question', cue: { kind: 'order', … } }`.
+ */
+export type ProductionSessionItem = {
+  [D in DrillDirection]: ProductionItemFor<D>;
+}[DrillDirection];
+
+/** Item de discrimination d'une direction donnée : QCM étiqueté, minoritaire. */
+type DiscriminationItemFor<D extends DrillDirection> = SessionItemCommon & {
   readonly exerciseKind: Extract<ExerciseKind, 'discrimination'>;
+  readonly direction: D;
+  readonly cue: CueForDirection<D>;
+  readonly expectedAnswer: ExpectedAnswerForDirection<D>;
   /** Exactement 4 options, dont une seule correcte. */
   readonly options: readonly DiscriminationOption[];
   readonly correctOptionId: string;
-}
+};
 
-/** Item de session, discriminé par `exerciseKind`. */
+/** Item de discrimination, union indexée par la direction (mêmes garanties). */
+export type DiscriminationSessionItem = {
+  [D in DrillDirection]: DiscriminationItemFor<D>;
+}[DrillDirection];
+
+/** Item de session, discriminé par `exerciseKind` et par `direction`. */
 export type SessionItem = ProductionSessionItem | DiscriminationSessionItem;
 
 /** Limites de pacing par défaut (L3), surchargées par la requête. */
@@ -160,6 +211,11 @@ export interface SessionRequest {
   readonly actIds?: readonly ActId[];
   /** Restreint la sélection à ces questions ; absent = tout l'acte. */
   readonly questionIds?: readonly QuestionId[];
+  /**
+   * Identifiant de la session, créé par la couche application (`AppServices.ids`)
+   * et recopié tel quel dans `SessionPlan.id` et dans les `itemId`.
+   */
+  readonly sessionId: SessionId;
   /** Graine enregistrée dans le plan pour rendre le tirage reproductible. */
   readonly seed: RandomSeed;
   /** Horloge injectée, en ms epoch. */
@@ -254,8 +310,11 @@ export interface AnswerFeedback {
 /** Canal de production déclaré par l'apprenant. */
 export type AnswerChannel = 'written' | 'spoken' | 'self-declared';
 
-/** Moment de la journée où la session a eu lieu (L17). */
-export type SessionWindow = 'morning' | 'day' | 'evening' | 'night';
+/**
+ * Fenêtre de journée (L17), définie avec le vocabulaire partagé.
+ * Ré-exportée ici pour que les consommateurs du module session n'aient qu'un import.
+ */
+export type { SessionWindow };
 
 /** Réponse notée d'un item. */
 export interface SessionAnswer {
@@ -268,7 +327,13 @@ export interface SessionAnswer {
   readonly responseTimeMs: DurationMs;
   readonly hintsUsed: number;
   readonly channel: AnswerChannel;
+  /** Renseigné par l'appelant (`SessionAnswerInput.now`), jamais par le domaine. */
   readonly answeredAt: EpochMs;
+  /**
+   * `grade !== 'again'` (voir `CORRECT_GRADES`).
+   * C'est la seule définition de « réponse correcte » ; `accuracy` en dérive via
+   * `ACCURACY_CREDIT`.
+   */
   readonly isCorrect: boolean;
 }
 
@@ -280,6 +345,11 @@ export interface SessionAnswerInput {
   readonly responseTimeMs: DurationMs;
   readonly hintsUsed: number;
   readonly channel: AnswerChannel;
+  /**
+   * Instant de la réponse, fourni par `ClockPort`. Obligatoire : le domaine pur
+   * n'a aucune source de temps et ne peut donc pas remplir `answeredAt`.
+   */
+  readonly now: EpochMs;
 }
 
 /** Sortie d'une soumission : nouvel état, réponse normalisée et feedback. */
@@ -289,6 +359,20 @@ export interface SessionSubmission {
   readonly feedback: AnswerFeedback;
   readonly completed: boolean;
 }
+
+/** Motif de rejet d'une soumission, à traduire par l'UI. */
+export type SessionSubmitFailure =
+  'wrong-phase' | 'unknown-item' | 'item-already-answered' | 'session-completed';
+
+/**
+ * Résultat d'une soumission.
+ *
+ * `submitAnswer` est rejetable : soumettre hors phase `revealed`, sur un item
+ * inconnu ou déjà répondu renvoie `ok: false` sans modifier l'état.
+ */
+export type SessionSubmissionResult =
+  | { readonly ok: true; readonly submission: SessionSubmission }
+  | { readonly ok: false; readonly failure: SessionSubmitFailure };
 
 /** Journal persistant d'une session terminée. */
 export interface SessionLog {
@@ -346,5 +430,6 @@ export interface SessionEngine {
   start(plan: SessionPlan, now: EpochMs): SessionState;
   revealNextHint(state: SessionState): SessionState;
   revealAnswer(state: SessionState): SessionState;
-  submitAnswer(state: SessionState, input: SessionAnswerInput): SessionSubmission;
+  /** Rejette explicitement toute soumission hors phase `revealed`. */
+  submitAnswer(state: SessionState, input: SessionAnswerInput): SessionSubmissionResult;
 }

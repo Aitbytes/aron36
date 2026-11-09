@@ -18,11 +18,19 @@ export const STORAGE_KEY = 'aron36.progress';
 /** Préfixe des sauvegardes brutes de données corrompues. */
 export const STORAGE_CORRUPT_BACKUP_PREFIX = 'aron36.progress.corrupt.';
 
-/** Version courante du schéma persisté. */
+/** Version courante du schéma persisté : la seule que ce code sait écrire. */
 export const SCHEMA_VERSION = 1;
 
-/** Version minimale lisible ; en dessous, la migration est impossible. */
+/** Version minimale lisible ; en dessous, la migration n'existe plus. */
 export const MIN_SUPPORTED_SCHEMA_VERSION = 1;
+
+/**
+ * Version maximale lisible : au-delà, les données viennent d'une version plus
+ * récente de l'application. Elles sont alors **jamais écrasées** (voir
+ * `ProgressLoadResult`), sinon une simple ouverture d'onglet détruirait la
+ * progression d'un utilisateur qui a mis à jour son navigateur dans l'autre sens.
+ */
+export const MAX_SUPPORTED_SCHEMA_VERSION = SCHEMA_VERSION;
 
 /** Nombre maximal de lignes de journal de révision conservées (les plus récentes). */
 export const MAX_REVIEW_LOG_ENTRIES = 5000;
@@ -64,15 +72,59 @@ export interface PersistedProgress {
   readonly sessionLogs: readonly SessionLog[];
 }
 
-/** Codes d'erreur de lecture/écriture, stables pour l'UI et les tests. */
+/**
+ * Codes d'erreur de lecture/écriture, stables pour l'UI et les tests.
+ *
+ * Taxonomie **unique** du projet : `StorageFailureCode` (`StoragePort`) en est un
+ * sous-ensemble extrait, pour qu'un code ne puisse pas exister d'un côté et pas
+ * de l'autre.
+ *
+ * Règle de sélection, sans ambiguïté :
+ * - `invalid-json` / `invalid-shape` : la chaîne n'est pas décodable ;
+ * - `unsupported-version` : `schemaVersion < MIN_SUPPORTED_SCHEMA_VERSION` ;
+ * - `missing-migration` : un trou existe dans la chaîne de migrations (aucune
+ *   migration ne va de la version stockée vers la suivante) ;
+ * - `future-version` : `schemaVersion > MAX_SUPPORTED_SCHEMA_VERSION` (lecture
+ *   seule, aucun écrasement) ;
+ * - `read-failed` / `write-failed` / `quota-exceeded` / `storage-unavailable` :
+ *   échecs du support de stockage, transmis tels quels par `StoragePort`.
+ */
 export type ProgressErrorCode =
   | 'invalid-json'
   | 'invalid-shape'
   | 'unsupported-version'
   | 'missing-migration'
+  | 'future-version'
   | 'read-failed'
   | 'write-failed'
-  | 'quota-exceeded';
+  | 'quota-exceeded'
+  | 'storage-unavailable';
+
+/** Action attendue de l'UI pour chaque code d'erreur. */
+export type ProgressRecoveryAction =
+  /** Proposer un import de sauvegarde, puis une réinitialisation explicite. */
+  | 'offer-import-or-reset'
+  /** Mettre à jour l'application ; ne rien écrire. */
+  | 'ask-to-update-app'
+  /** Réessayer plus tard ; ne rien écrire. */
+  | 'retry-later';
+
+/**
+ * Table de décision erreur → action UI, gelée par la Phase 1.
+ * `future-version` n'a **aucune** action destructive : elle n'autorise ni
+ * écriture ni réinitialisation.
+ */
+export const PROGRESS_RECOVERY_ACTIONS = {
+  'invalid-json': 'offer-import-or-reset',
+  'invalid-shape': 'offer-import-or-reset',
+  'unsupported-version': 'offer-import-or-reset',
+  'missing-migration': 'offer-import-or-reset',
+  'future-version': 'ask-to-update-app',
+  'read-failed': 'retry-later',
+  'write-failed': 'retry-later',
+  'quota-exceeded': 'retry-later',
+  'storage-unavailable': 'retry-later',
+} as const satisfies Readonly<Record<ProgressErrorCode, ProgressRecoveryAction>>;
 
 /** Erreur de persistance explicite, jamais levée à travers une frontière. */
 export interface ProgressError {
@@ -91,6 +143,17 @@ export type ProgressLoadResult =
       readonly progress: PersistedProgress;
       /** Version d'origine si une migration a été appliquée, sinon `null`. */
       readonly migratedFrom: number | null;
+    }
+  /**
+   * Données écrites par une version **plus récente** de l'application.
+   * Lecture seule : l'appelant ne doit ni migrer, ni écraser, ni sauvegarder.
+   * L'état brut reste intact dans le stockage ; l'UI invite à mettre à jour.
+   */
+  | {
+      readonly status: 'future-version';
+      /** Version rencontrée dans le stockage. */
+      readonly version: number;
+      readonly error: ProgressError;
     }
   | {
       readonly status: 'corrupt';
@@ -142,11 +205,18 @@ export type ProgressImportResult =
     }
   | { readonly ok: false; readonly error: ProgressError };
 
-/** Codec pur : sérialisation, validation, migration. Aucun accès stockage. */
+/**
+ * Codec pur : sérialisation, validation, migration. Aucun accès stockage.
+ *
+ * Les deux points d'entrée ne sont pas interchangeables : `decode` ne lit que le
+ * format interne (`PersistedProgress`), `fromExport` ne lit que l'enveloppe
+ * `ExportEnvelope`. Aucun des deux ne tente l'autre format : la détection de
+ * format relève de la couche application.
+ */
 export interface ProgressCodec {
   /** Sérialise l'état complet en JSON stable (clés triées par l'implémentation). */
   encode(progress: PersistedProgress): string;
-  /** Décode, valide et migre une chaîne interne ou un export. */
+  /** Décode, valide et migre une chaîne au format interne uniquement. */
   decode(raw: string): ProgressDecodeResult;
   /** Construit l'enveloppe d'export à partir d'un état valide. */
   toExport(progress: PersistedProgress, now: EpochMs): ExportEnvelope;

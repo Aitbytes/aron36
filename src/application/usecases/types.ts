@@ -1,10 +1,13 @@
 import type {
   ActId,
+  ConfidenceRating,
   DurationMs,
+  EpochMs,
   QuestionId,
   RandomSeed,
   ReviewGrade,
   SessionId,
+  SessionWindow,
 } from '@/domain/shared/types';
 import type { BadgeId, XpAward } from '@/domain/gamification/types';
 import type { PersonalHook, PersonalHookKind } from '@/domain/memory/types';
@@ -22,6 +25,7 @@ import type {
 } from '@/domain/session/types';
 import type { ScheduledReview, Scheduler, SchedulerConfig } from '@/domain/srs/types';
 import type { ClockPort } from '@/application/ports/ClockPort';
+import type { IdPort } from '@/application/ports/IdPort';
 import type { RandomPort } from '@/application/ports/RandomPort';
 import type { SpeechPort } from '@/application/ports/SpeechPort';
 import type { StoragePort } from '@/application/ports/StoragePort';
@@ -38,6 +42,12 @@ export interface AppServices {
   readonly storage: StoragePort;
   readonly clock: ClockPort;
   readonly speech: SpeechPort;
+  /**
+   * Fabrique d'identifiants opaques. Le domaine étant pur, un cas d'usage doit
+   * appeler `ids.newSessionId()` et le transmettre dans `SessionRequest.sessionId`
+   * (le constructeur de plan ne génère jamais d'identifiant lui-même).
+   */
+  readonly ids: IdPort;
   readonly catalog: QuestionCatalog;
   readonly scheduler: Scheduler;
   readonly schedulerConfig: SchedulerConfig;
@@ -71,7 +81,8 @@ export interface SubmitAnswerInput {
   readonly sessionId: SessionId;
   readonly itemId: string;
   readonly grade: ReviewGrade;
-  readonly confidence: 1 | 2 | 3 | 4 | 5 | null;
+  /** Vocabulaire partagé, jamais redéclaré (voir `ConfidenceRating`). */
+  readonly confidence: ConfidenceRating | null;
   readonly responseTimeMs: DurationMs;
   readonly hintsUsed: number;
   readonly channel: AnswerChannel;
@@ -91,9 +102,19 @@ export interface SubmitAnswerOutput {
   readonly summary: SessionSummary | null;
 }
 
-/** Entrée de fin de session (abandon ou clôture explicite). */
+/**
+ * Entrée de fin de session (abandon ou clôture explicite).
+ *
+ * `now` et `window` sont fournis par la couche application : le domaine n'a
+ * aucune source de temps, et `SessionLog.window` (L17) doit être calculé depuis
+ * l'heure **locale** (`ClockPort.dayKey` / fuseau), pas depuis le domaine.
+ */
 export interface FinishSessionInput {
   readonly sessionId: SessionId;
+  /** Instant de clôture, fourni par `ClockPort.now()`. */
+  readonly now: EpochMs;
+  /** Fenêtre de journée de la session, calculée depuis l'heure locale. */
+  readonly window: SessionWindow;
 }
 
 /** Sortie de fin de session. */

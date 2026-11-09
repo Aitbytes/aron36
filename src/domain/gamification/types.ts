@@ -5,13 +5,19 @@ import type {
   DrillDirection,
   DurationMs,
   EpochMs,
+  ExerciseKind,
   LocalizedText,
   LocaleCode,
   QuestionId,
   Ratio,
   RandomSeed,
   ReviewGrade,
+  SessionId,
+  SessionWindow,
 } from '@/domain/shared/types';
+import type { CardState, ReviewLog } from '@/domain/srs/types';
+import type { QuestionMastery } from '@/domain/mastery/types';
+import type { SessionLog } from '@/domain/session/types';
 
 /**
  * Économie de jeu au service de la rétention (L8, L12, L15, L17).
@@ -257,10 +263,22 @@ export interface CollectionState {
 export const COLLECTION_SIZE = QUESTION_COUNT;
 
 /**
- * Seuils d'intervalle (en jours) pour le palier de maîtrise d'une carte.
- * `masteryTier` = nombre de seuils atteints, borné à 1..5.
+ * Intervalle minimal (en jours) ouvrant droit à une carte de collection.
+ *
+ * Aligné sur `DEFAULT_MASTERY_CRITERIA.minIntervalDays` : une carte de collection
+ * récompense une question **maîtrisée**, pas une simple première réussite.
  */
-export const COLLECTION_MASTERY_TIER_DAYS = [1, 7, 21, 60, 120] as const;
+export const COLLECTION_ENTRY_MIN_INTERVAL_DAYS = 21;
+
+/**
+ * Seuils d'intervalle (en jours) définissant le palier d'une carte.
+ *
+ * `masteryTier` = nombre de seuils atteints, borné à 1..5. Le premier seuil vaut
+ * exactement `COLLECTION_ENTRY_MIN_INTERVAL_DAYS`, donc **aucun palier n'est
+ * inattevable** : le palier 1 est acquis à la maîtrise, le palier 5 à l'intervalle
+ * maximal (`DEFAULT_SCHEDULER_CONFIG.maxIntervalDays` = 180).
+ */
+export const COLLECTION_MASTERY_TIER_DAYS = [21, 40, 70, 120, 180] as const;
 
 /** Identifiant stable d'un badge (kebab-case). */
 export type BadgeId = string;
@@ -435,4 +453,152 @@ export interface PlayerProgressView {
   readonly streak: StreakState;
   readonly badges: readonly BadgeState[];
   readonly dailyQuests: QuestBoard | null;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+ * Contrats de calcul (Phase 2)
+ *
+ * Ces six interfaces sont le contrat gelé de l'économie de jeu. Toutes leurs
+ * implémentations sont pures : aucun accès à l'horloge, au hasard ou au stockage,
+ * tout est reçu en paramètre. Elles peuvent donc être implémentées et testées
+ * indépendamment du reste de l'application.
+ * ──────────────────────────────────────────────────────────────────────────── */
+
+/** Contexte d'une attribution d'XP. */
+export interface XpContext {
+  readonly rules: XpRules;
+  /** Niveau courant, après application du gain en cours si nécessaire. */
+  readonly level: LevelState;
+  /** Réponses déjà données aujourd'hui sur la même question (anti-farm). */
+  readonly sameDayAnswersForQuestion: number;
+  /** `true` si la question n'a jamais été produite avec succès auparavant. */
+  readonly isFirstExposure: boolean;
+  readonly now: EpochMs;
+}
+
+/** Données nécessaires au calcul de l'XP d'une réponse. */
+export interface AnswerXpInput {
+  readonly questionId: QuestionId;
+  readonly direction: DrillDirection;
+  readonly exerciseKind: ExerciseKind;
+  readonly grade: ReviewGrade;
+  readonly responseTimeMs: DurationMs;
+  readonly hintsUsed: number;
+}
+
+/** Données nécessaires aux bonus de fin de session. */
+export interface SessionXpInput {
+  readonly sessionId: SessionId;
+  readonly itemCount: number;
+  readonly productionCount: number;
+  readonly correctCount: number;
+}
+
+/** Calcul de l'XP. Un gain nul est un `XpAward` de montant 0, jamais `null`. */
+export interface XpCalculator {
+  forAnswer(input: AnswerXpInput, context: XpContext): XpAward;
+  forSession(input: SessionXpInput, context: XpContext): XpAward;
+}
+
+/** Calcul du niveau à partir de l'XP cumulée. */
+export interface LevelCalculator {
+  /** Niveau et progression correspondant à `totalXp`. */
+  levelFor(totalXp: XpAmount, curve: LevelCurve): LevelState;
+  /** XP cumulée requise pour atteindre `level` (1 pour le niveau 1). */
+  thresholdFor(level: number, curve: LevelCurve): XpAmount;
+}
+
+/** Mise à jour de la série quotidienne, sans jamais punir (voir `StreakRules`). */
+export interface StreakUpdater {
+  update(input: StreakUpdateInput): StreakUpdate;
+}
+
+/** Entrée d'une mise à jour de série. */
+export interface StreakUpdateInput {
+  readonly state: StreakState;
+  /** Jour local courant, fourni par `ClockPort.dayKey`. */
+  readonly today: DayKey;
+  /** Productions réussies **aujourd'hui**, toutes sessions confondues. */
+  readonly qualifyingProductionsToday: number;
+  /** Jours civils écoulés depuis `state.lastActiveDay`, `null` si jamais actif. */
+  readonly daysSinceLastActive: number | null;
+  readonly rules: StreakRules;
+}
+
+/** Entrée de progression d'une quête après une réponse. */
+export interface QuestProgressInput {
+  readonly direction: DrillDirection;
+  readonly exerciseKind: ExerciseKind;
+  readonly grade: ReviewGrade;
+  readonly responseTimeMs: DurationMs;
+  readonly hintsUsed: number;
+  /** `true` si la carte était en phase `new` avant cette réponse. */
+  readonly wasNewCard: boolean;
+  /** Fenêtre de journée de la réponse (L17). */
+  readonly window: SessionWindow;
+}
+
+/** Génération et progression des quêtes quotidiennes. */
+export interface QuestGenerator {
+  /** Tirage déterministe de `DAILY_QUEST_COUNT` quêtes depuis `seed`. */
+  boardFor(input: QuestBoardRequest): QuestBoard;
+  /** Nouveau tableau après une réponse ; ne crée jamais de quête supplémentaire. */
+  progress(
+    board: QuestBoard,
+    definitions: readonly QuestDefinition[],
+    input: QuestProgressInput,
+  ): QuestBoard;
+}
+
+/** Entrée de création d'un tableau de quêtes. */
+export interface QuestBoardRequest {
+  readonly dayKey: DayKey;
+  readonly seed: RandomSeed;
+  readonly definitions: readonly QuestDefinition[];
+  /** Quêtes déjà proposées récemment, pour éviter la répétition. */
+  readonly recentQuestIds: readonly QuestId[];
+}
+
+/** Résultat d'une évaluation de collection. */
+export interface CollectionUpdate {
+  readonly state: CollectionState;
+  /** `true` si cette évaluation a créé la carte. */
+  readonly unlocked: boolean;
+  /** Palier précédent, `null` si la carte n'existait pas encore. */
+  readonly previousTier: 1 | 2 | 3 | 4 | 5 | null;
+}
+
+/** Tenue à jour de la collection des 36 cartes. */
+export interface CollectionEvaluator {
+  /** N'ajoute une carte qu'à la maîtrise (`COLLECTION_ENTRY_MIN_INTERVAL_DAYS`). */
+  update(input: CollectionUpdateInput): CollectionUpdate;
+}
+
+/** Entrée d'une évaluation de collection. */
+export interface CollectionUpdateInput {
+  readonly state: CollectionState;
+  readonly mastery: QuestionMastery;
+  readonly now: EpochMs;
+}
+
+/** Entrée du calcul des métriques agrégées. */
+export interface MetricsInput {
+  readonly reviewLogs: readonly ReviewLog[];
+  readonly sessionLogs: readonly SessionLog[];
+  readonly cards: ReadonlyMap<QuestionId, CardState>;
+  readonly mastery: readonly QuestionMastery[];
+  readonly hooksCount: number;
+  readonly collection: CollectionState;
+  readonly streak: StreakState;
+  readonly oralExamPasses: number;
+}
+
+/**
+ * Calcul des métriques affichées et des conditions de badge.
+ *
+ * Dépend de `mastery` : `masteredQuestions` et `masteredActs` ne peuvent pas
+ * être calculés sans les critères de maîtrise.
+ */
+export interface MetricsCalculator {
+  compute(input: MetricsInput): PlayerMetrics;
 }

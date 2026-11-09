@@ -1,3 +1,5 @@
+import type { ProgressErrorCode } from '@/domain/progress/types';
+
 /**
  * Port de stockage clé/valeur (localStorage en production, mémoire en test).
  *
@@ -6,8 +8,17 @@
  */
 export type StorageKey = string;
 
-/** Cause normalisée d'un échec de stockage. */
-export type StorageFailureCode = 'unavailable' | 'quota-exceeded' | 'read-failed' | 'write-failed';
+/**
+ * Cause normalisée d'un échec de stockage.
+ *
+ * Sous-ensemble **extrait** de la taxonomie unique `ProgressErrorCode` : les deux
+ * énumérations ne peuvent pas diverger, un code ajouté ici doit d'abord exister
+ * côté progression (`'unavailable'` s'y nomme `'storage-unavailable'`).
+ */
+export type StorageFailureCode = Extract<
+  ProgressErrorCode,
+  'quota-exceeded' | 'read-failed' | 'write-failed' | 'storage-unavailable'
+>;
 
 /** Échec de stockage, sérialisable et affichable. */
 export interface StorageFailure {

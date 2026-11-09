@@ -53,7 +53,11 @@ export interface CardState {
   readonly reps: number;
   /** Nombre de chutes en réapprentissage (note `again` après graduation). */
   readonly lapses: number;
-  /** Réussites consécutives (`hard`, `good` ou `easy`) depuis la dernière chute. */
+  /**
+   * Réussites consécutives depuis la dernière chute.
+   * Une note compte dès qu'elle appartient à `CORRECT_GRADES` ; seule `again`
+   * remet ce compteur à zéro et provoque une chute.
+   */
   readonly consecutiveSuccesses: number;
   /** Dernière révision notée, ou `null` pour une carte neuve. */
   readonly lastReviewedAt: EpochMs | null;
@@ -122,14 +126,14 @@ export const DEFAULT_SCHEDULER_CONFIG = {
 /** Six mois : au-delà, une carte est considérée comme consolidée. */
 export const MAX_REVIEW_INTERVAL_DAYS = 180;
 
-/** Seuil de « maîtrisé » : intervalle de consolidation minimal, en jours. */
-export const MASTERY_MIN_INTERVAL_DAYS = 21;
-
-/** Seuil de « maîtrisé » : réussites consécutives minimales. */
-export const MASTERY_MIN_CONSECUTIVE_SUCCESSES = 2;
-
-/** Seuil de « maîtrisé » : nombre minimal de révisions notées. */
-export const MASTERY_MIN_REPS = 3;
+/*
+ * Les seuils de « maîtrisé » ne sont PAS définis ici.
+ *
+ * Source unique : `DEFAULT_MASTERY_CRITERIA` dans `@/domain/mastery/types`.
+ * Ce module ne connaît que l'ordonnancement par carte ; la maîtrise combine
+ * l'état SRS et la couverture des directions, ce qui relève du module `mastery`.
+ * Un `contracts.test` interdit toute duplication de ces seuils.
+ */
 
 /**
  * Résultat d'un ordonnancement, avant journalisation applicative.
