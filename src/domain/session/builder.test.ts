@@ -91,6 +91,25 @@ describe('builder — filtres et échecs explicites', () => {
     expect(plan.config.directions).toEqual(['order-to-question']);
   });
 
+  it('speed refusé avant maîtrise', () => {
+    expect(
+      expectFailure(
+        makeRequest({ mode: 'speed', actIds: [2] }),
+        dueCardsContext({ masteredActIds: [] }),
+      ),
+    ).toBe('mode-locked');
+
+    const mastered = buildOk(
+      makeRequest({ mode: 'speed', actIds: [2] }),
+      dueCardsContext({ masteredActIds: [2] }),
+    );
+    expect(mastered.config.mode).toBe('speed');
+    expect(mastered.config.speedTargetMs).toBe(4_000);
+    for (const item of mastered.items) {
+      expect(item.actId).toBe(2);
+    }
+  });
+
   it('restreint la sélection aux actes et questions demandés', () => {
     const plan = buildOk(
       makeRequest({ actIds: [2], questionIds: [13, 14, 15], maxItems: 10 }),
@@ -375,5 +394,52 @@ describe('builder — prétest L18', () => {
 
     const review = buildOk(makeRequest({ mode: 'review', maxItems: 3 }), dueCardsContext());
     expect(review.items.some((item) => item.isPretest)).toBe(false);
+  });
+});
+
+describe('builder — modes examen : aucune discrimination (L1)', () => {
+  const EXAM_MODES = ['recitation', 'grand-oral'] as const;
+
+  it('aucun QCM en grand-oral', () => {
+    const plan = buildOk(makeRequest({ mode: 'grand-oral' }), dueCardsContext());
+    expect(plan.config.productionOnly).toBe(true);
+    expect(plan.config.maxDiscriminationRatio).toBe(0);
+    expect(plan.items).toHaveLength(36);
+    expect(plan.interleaving.discriminationCount).toBe(0);
+    expect(plan.items.every((item) => item.exerciseKind === 'production')).toBe(true);
+  });
+
+  it('aucun QCM en recitation', () => {
+    const plan = buildOk(makeRequest({ mode: 'recitation' }), dueCardsContext());
+    expect(plan.config.productionOnly).toBe(true);
+    expect(plan.config.maxDiscriminationRatio).toBe(0);
+    expect(plan.items).toHaveLength(36);
+    expect(plan.interleaving.discriminationCount).toBe(0);
+    for (const item of plan.items) {
+      expect(item.exerciseKind).toBe('production');
+      expect(item.direction).toBe('order-to-question');
+    }
+  });
+
+  it('recitation couvre 36 items', () => {
+    const plan = buildOk(makeRequest({ mode: 'recitation' }), dueCardsContext());
+    expect(plan.items).toHaveLength(36);
+    expect(new Set(plan.items.map((item) => item.questionId)).size).toBe(36);
+
+    // Acte demandé : tout l'acte (12 scènes), jamais un repli à 20 items.
+    const actPlan = buildOk(makeRequest({ mode: 'recitation', actIds: [2] }), dueCardsContext());
+    expect(actPlan.items).toHaveLength(12);
+    for (const item of actPlan.items) {
+      expect(item.actId).toBe(2);
+    }
+  });
+
+  it('aucun QCM dans un mode examen', () => {
+    for (const mode of EXAM_MODES) {
+      const plan = buildOk(makeRequest({ mode }), dueCardsContext());
+      expect(plan.config.productionOnly).toBe(true);
+      expect(plan.items.some((item) => item.exerciseKind === 'discrimination')).toBe(false);
+      expect(plan.interleaving.discriminationCount).toBe(0);
+    }
   });
 });

@@ -29,7 +29,6 @@ function answerInput(
   return {
     itemId,
     grade,
-    confidence: null,
     responseTimeMs: 5_000,
     hintsUsed: 0,
     channel: 'written',
@@ -46,6 +45,25 @@ function currentItemId(state: SessionState): string {
   return item.id;
 }
 
+/** Déclare la confiance (L12) si le plan l'exige, puis révèle l'item courant. */
+function revealed(state: SessionState): SessionState {
+  let current = state;
+  if (current.plan.config.requiresConfidence) {
+    const withConfidence = sessionEngine.setConfidence(current, 3);
+    expect(withConfidence.ok).toBe(true);
+    if (!withConfidence.ok) {
+      throw new Error(`confiance refusée : ${withConfidence.failure}`);
+    }
+    current = withConfidence.state;
+  }
+  const result = sessionEngine.revealAnswer(current);
+  expect(result.ok).toBe(true);
+  if (!result.ok) {
+    throw new Error(`révélation refusée : ${result.failure}`);
+  }
+  return result.state;
+}
+
 /** Avance jusqu'au premier item de la direction demandée. */
 function reachDirection(state: SessionState, direction: DrillDirection): SessionState {
   let current = state;
@@ -54,8 +72,7 @@ function reachDirection(state: SessionState, direction: DrillDirection): Session
     if (item !== undefined && item.direction === direction) {
       return current;
     }
-    const revealed = sessionEngine.revealAnswer(current);
-    const result = sessionEngine.submitAnswer(revealed, answerInput(item!.id, 'good'));
+    const result = sessionEngine.submitAnswer(revealed(current), answerInput(item!.id, 'good'));
     if (!result.ok) {
       throw new Error(`soumission intermédiaire refusée : ${result.failure}`);
     }
@@ -72,6 +89,7 @@ describe('engine — démarrage et machine à états', () => {
     expect(state.currentIndex).toBe(0);
     expect(state.revealedHints).toBe(0);
     expect(state.answers).toEqual([]);
+    expect(state.confidence).toBeNull();
     expect(state.startedAt).toBe(1_000);
     expect(state.completedAt).toBeNull();
   });
@@ -92,60 +110,141 @@ describe('engine — démarrage et machine à états', () => {
   });
 
   it('révéler la réponse ne note pas (L1)', () => {
-    const plan = buildPlan();
+    const plan = buildPlan({ mode: 'learning', maxItems: 5 });
     const asking = sessionEngine.start(plan, 1_000);
-    const revealed = sessionEngine.revealAnswer(asking);
-    expect(revealed.phase).toBe('revealed');
-    expect(revealed.answers).toEqual([]);
-    expect(sessionEngine.revealAnswer(revealed)).toBe(revealed);
+    const revealedState = revealed(asking);
+    expect(revealedState.phase).toBe('revealed');
+    expect(revealedState.answers).toEqual([]);
+    expect(sessionEngine.revealAnswer(revealedState)).toEqual({
+      ok: false,
+      failure: 'wrong-phase',
+    });
   });
 
   it('n’avance plus les indices hors phase `asking`', () => {
-    const plan = buildPlan();
-    const revealed = sessionEngine.revealAnswer(sessionEngine.start(plan, 1_000));
-    expect(sessionEngine.revealNextHint(revealed)).toBe(revealed);
+    const plan = buildPlan({ mode: 'learning', maxItems: 5 });
+    const revealedState = revealed(sessionEngine.start(plan, 1_000));
+    expect(sessionEngine.revealNextHint(revealedState)).toBe(revealedState);
+  });
+});
+
+describe('engine — métacognition L12', () => {
+  it('confiance exigée avant révélation', () => {
+    const plan = buildPlan({ mode: 'review', maxItems: 3 });
+    const asking = sessionEngine.start(plan, 1_000);
+    expect(plan.config.requiresConfidence).toBe(true);
+
+    // Sans confiance, la révélation est refusée : L12 n'est pas décoratif.
+    expect(sessionEngine.revealAnswer(asking)).toEqual({
+      ok: false,
+      failure: 'confidence-required',
+    });
+
+    const declared = sessionEngine.setConfidence(asking, 4);
+    expect(declared.ok).toBe(true);
+    if (!declared.ok) {
+      return;
+    }
+    expect(declared.state.confidence).toBe(4);
+
+    const revealedResult = sessionEngine.revealAnswer(declared.state);
+    expect(revealedResult.ok).toBe(true);
+    if (!revealedResult.ok) {
+      return;
+    }
+    expect(revealedResult.state.phase).toBe('revealed');
+
+    // La confiance jugée avant révélation est recopiée dans la réponse.
+    const submitted = sessionEngine.submitAnswer(
+      revealedResult.state,
+      answerInput(currentItemId(asking), 'good'),
+    );
+    expect(submitted.ok).toBe(true);
+    if (submitted.ok) {
+      expect(submitted.submission.answer.confidence).toBe(4);
+    }
+  });
+
+  it('submit sans confiance rejeté', () => {
+    const plan = buildPlan({ mode: 'review', maxItems: 3 });
+    const confirmed = revealed(sessionEngine.start(plan, 1_000));
+    // État incohérent forcé : phase `revealed` sans jugement de confiance.
+    const inconsistent: SessionState = { ...confirmed, confidence: null };
+    expect(
+      sessionEngine.submitAnswer(inconsistent, answerInput(currentItemId(inconsistent), 'good')),
+    ).toEqual({ ok: false, failure: 'wrong-phase' });
+  });
+
+  it('révélation hors phase rejetée', () => {
+    const plan = buildPlan({ mode: 'learning', maxItems: 3 });
+    const asking = sessionEngine.start(plan, 1_000);
+    const revealedState = revealed(asking);
+
+    // Double révélation et confiance rétroactive : refusées.
+    expect(sessionEngine.revealAnswer(revealedState)).toEqual({
+      ok: false,
+      failure: 'wrong-phase',
+    });
+    expect(sessionEngine.setConfidence(revealedState, 2)).toEqual({
+      ok: false,
+      failure: 'wrong-phase',
+    });
+
+    // Session terminée : plus aucune transition `asking → revealed`.
+    const single = buildPlan({ mode: 'learning', maxItems: 1 });
+    const submitted = sessionEngine.submitAnswer(
+      revealed(sessionEngine.start(single, 1_000)),
+      answerInput(single.items[0]!.id, 'good'),
+    );
+    expect(submitted.ok).toBe(true);
+    if (!submitted.ok) {
+      return;
+    }
+    expect(submitted.submission.state.phase).toBe('completed');
+    expect(sessionEngine.revealAnswer(submitted.submission.state)).toEqual({
+      ok: false,
+      failure: 'wrong-phase',
+    });
   });
 });
 
 describe('engine — soumissions rejetées explicitement', () => {
   it('refuse une soumission hors phase `revealed`', () => {
-    const plan = buildPlan();
+    const plan = buildPlan({ mode: 'learning', maxItems: 3 });
     const state = sessionEngine.start(plan, 1_000);
     const result = sessionEngine.submitAnswer(state, answerInput(currentItemId(state), 'good'));
     expect(result).toEqual({ ok: false, failure: 'wrong-phase' });
   });
 
   it('refuse un item inconnu', () => {
-    const plan = buildPlan();
-    const state = sessionEngine.revealAnswer(sessionEngine.start(plan, 1_000));
+    const plan = buildPlan({ mode: 'learning', maxItems: 3 });
+    const state = revealed(sessionEngine.start(plan, 1_000));
     const result = sessionEngine.submitAnswer(state, answerInput('item-inexistant', 'good'));
     expect(result).toEqual({ ok: false, failure: 'unknown-item' });
   });
 
   it('refuse une double soumission du même item', () => {
-    const plan = buildPlan();
+    const plan = buildPlan({ mode: 'learning', maxItems: 3 });
     const start = sessionEngine.start(plan, 1_000);
     const firstItemId = currentItemId(start);
-    const first = sessionEngine.submitAnswer(
-      sessionEngine.revealAnswer(start),
-      answerInput(firstItemId, 'good'),
-    );
+    const first = sessionEngine.submitAnswer(revealed(start), answerInput(firstItemId, 'good'));
     expect(first.ok).toBe(true);
     if (!first.ok) {
       return;
     }
     // L'item précédent est déjà dans `answers` : sa soumission est rejetée.
-    const nextRevealed = sessionEngine.revealAnswer(first.submission.state);
-    const second = sessionEngine.submitAnswer(nextRevealed, answerInput(firstItemId, 'good'));
+    const second = sessionEngine.submitAnswer(
+      revealed(first.submission.state),
+      answerInput(firstItemId, 'good'),
+    );
     expect(second).toEqual({ ok: false, failure: 'item-already-answered' });
   });
 
   it('refuse toute soumission après la fin de session', () => {
     const plan = buildPlan({ mode: 'learning', maxItems: 1 });
     const start = sessionEngine.start(plan, 1_000);
-    const revealed = sessionEngine.revealAnswer(start);
     const submitted = sessionEngine.submitAnswer(
-      revealed,
+      revealed(start),
       answerInput(currentItemId(start), 'good'),
     );
     expect(submitted.ok).toBe(true);
@@ -164,11 +263,9 @@ describe('engine — réponse, feedback et progression', () => {
   it('produit une réponse normalisée depuis la saisie', () => {
     const plan = buildPlan({ mode: 'learning', maxItems: 3 });
     const start = sessionEngine.start(plan, 1_000);
-    const revealed = sessionEngine.revealAnswer(start);
     const result = sessionEngine.submitAnswer(
-      revealed,
+      revealed(start),
       answerInput(currentItemId(start), 'hard', {
-        confidence: 3,
         responseTimeMs: 4_200,
         hintsUsed: 2,
         channel: 'spoken',
@@ -188,42 +285,46 @@ describe('engine — réponse, feedback et progression', () => {
     expect(answer.grade).toBe('hard');
     expect(answer.isCorrect).toBe(true);
     expect(answer.confidence).toBeNull();
+    expect(answer.isPretest).toBe(item.isPretest);
     expect(answer.responseTimeMs).toBe(4_200);
     expect(answer.hintsUsed).toBe(2);
     expect(answer.channel).toBe('spoken');
     expect(answer.answeredAt).toBe(7_777);
-    expect(feedback.expectedAnswer).toEqual(item.expectedAnswer);
-    expect(feedback.mentalImage).toEqual(item.mentalImage);
-    expect(feedback.messageKey).toContain('session.feedback');
+    expect(feedback?.expectedAnswer).toEqual(item.expectedAnswer);
+    expect(feedback?.mentalImage).toEqual(item.mentalImage);
+    expect(feedback?.messageKey).toContain('session.feedback');
     expect(completed).toBe(false);
     expect(state.phase).toBe('asking');
     expect(state.currentIndex).toBe(1);
     expect(state.revealedHints).toBe(0);
+    expect(state.confidence).toBeNull();
     expect(state.answers).toHaveLength(1);
   });
 
   it('`again` n’est jamais correct et `hard` est partiel', () => {
     const plan = buildPlan({ mode: 'learning', maxItems: 3 });
     const start = sessionEngine.start(plan, 1_000);
-    const revealed = sessionEngine.revealAnswer(start);
-    const result = sessionEngine.submitAnswer(revealed, answerInput(currentItemId(start), 'again'));
+    const result = sessionEngine.submitAnswer(
+      revealed(start),
+      answerInput(currentItemId(start), 'again'),
+    );
     expect(result.ok).toBe(true);
     if (!result.ok) {
       return;
     }
     expect(result.submission.answer.isCorrect).toBe(false);
-    expect(result.submission.feedback.correct).toBe(false);
-    expect(result.submission.feedback.errorSignal).not.toBe('none');
+    expect(result.submission.feedback?.correct).toBe(false);
+    expect(result.submission.feedback?.errorSignal).not.toBe('none');
 
     const hard = buildPlan({ mode: 'learning', maxItems: 3 });
     const hardStart = sessionEngine.start(hard, 1_000);
     const hardResult = sessionEngine.submitAnswer(
-      sessionEngine.revealAnswer(hardStart),
+      revealed(hardStart),
       answerInput(currentItemId(hardStart), 'hard'),
     );
     expect(hardResult.ok).toBe(true);
     if (hardResult.ok) {
-      expect(hardResult.submission.feedback.errorSignal).toBe('partial-answer');
+      expect(hardResult.submission.feedback?.errorSignal).toBe('partial-answer');
     }
   });
 
@@ -231,13 +332,13 @@ describe('engine — réponse, feedback et progression', () => {
     const plan = buildPlan({ maxItems: 12 });
     const state = reachDirection(sessionEngine.start(plan, 1_000), 'question-to-number');
     const result = sessionEngine.submitAnswer(
-      sessionEngine.revealAnswer(state),
+      revealed(state),
       answerInput(currentItemId(state), 'again', { responseTimeMs: 5_000 }),
     );
     expect(result.ok).toBe(true);
     if (result.ok) {
-      expect(result.submission.feedback.errorSignal).toBe('number-confusion');
-      expect(result.submission.feedback.messageKey).toBe('session.feedback.numberConfusion');
+      expect(result.submission.feedback?.errorSignal).toBe('number-confusion');
+      expect(result.submission.feedback?.messageKey).toBe('session.feedback.numberConfusion');
     }
   });
 
@@ -248,23 +349,23 @@ describe('engine — réponse, feedback et progression', () => {
       'keyword-to-question',
     );
     const keyword = sessionEngine.submitAnswer(
-      sessionEngine.revealAnswer(keywordState),
+      revealed(keywordState),
       answerInput(currentItemId(keywordState), 'again'),
     );
     expect(keyword.ok).toBe(true);
     if (keyword.ok) {
-      expect(keyword.submission.feedback.errorSignal).toBe('keyword-confusion');
+      expect(keyword.submission.feedback?.errorSignal).toBe('keyword-confusion');
     }
 
     const orderPlan = buildPlan({ maxItems: 12 });
     const orderState = reachDirection(sessionEngine.start(orderPlan, 1_000), 'order-to-question');
     const order = sessionEngine.submitAnswer(
-      sessionEngine.revealAnswer(orderState),
+      revealed(orderState),
       answerInput(currentItemId(orderState), 'again'),
     );
     expect(order.ok).toBe(true);
     if (order.ok) {
-      expect(order.submission.feedback.errorSignal).toBe('wrong-question');
+      expect(order.submission.feedback?.errorSignal).toBe('wrong-question');
     }
   });
 
@@ -280,32 +381,46 @@ describe('engine — réponse, feedback et progression', () => {
     const plan = buildPlan({ mode: 'learning', maxItems: 3 });
     const state = sessionEngine.start(plan, 1_000);
     const result = sessionEngine.submitAnswer(
-      sessionEngine.revealAnswer(state),
+      revealed(state),
       answerInput(currentItemId(state), 'again', { responseTimeMs: 0 }),
     );
     expect(result.ok).toBe(true);
     if (result.ok) {
-      expect(result.submission.feedback.errorSignal).toBe('omission');
+      expect(result.submission.feedback?.errorSignal).toBe('omission');
     }
   });
 
   it('conserve la confiance seulement si la session l’exige (L12)', () => {
     const reviewPlan = buildPlan({ mode: 'review', maxItems: 3 });
-    const reviewState = sessionEngine.revealAnswer(sessionEngine.start(reviewPlan, 1_000));
+    const reviewState = sessionEngine.setConfidence(sessionEngine.start(reviewPlan, 1_000), 4);
+    expect(reviewState.ok).toBe(true);
+    if (!reviewState.ok) {
+      return;
+    }
+    const revealedResult = sessionEngine.revealAnswer(reviewState.state);
+    expect(revealedResult.ok).toBe(true);
+    if (!revealedResult.ok) {
+      return;
+    }
     const reviewResult = sessionEngine.submitAnswer(
-      reviewState,
-      answerInput(currentItemId(reviewState), 'good', { confidence: 4 }),
+      revealedResult.state,
+      answerInput(currentItemId(reviewState.state), 'good'),
     );
     expect(reviewResult.ok).toBe(true);
     if (reviewResult.ok) {
       expect(reviewResult.submission.answer.confidence).toBe(4);
     }
 
+    // Hors exigence, `setConfidence` ne fuit pas dans la réponse normalisée.
     const learningPlan = buildPlan({ mode: 'learning', maxItems: 3 });
-    const learningState = sessionEngine.revealAnswer(sessionEngine.start(learningPlan, 1_000));
+    const declared = sessionEngine.setConfidence(sessionEngine.start(learningPlan, 1_000), 4);
+    expect(declared.ok).toBe(true);
+    if (!declared.ok) {
+      return;
+    }
     const learningResult = sessionEngine.submitAnswer(
-      learningState,
-      answerInput(currentItemId(learningState), 'good', { confidence: 4 }),
+      revealed(declared.state),
+      answerInput(currentItemId(declared.state), 'good'),
     );
     expect(learningResult.ok).toBe(true);
     if (learningResult.ok) {
@@ -316,9 +431,8 @@ describe('engine — réponse, feedback et progression', () => {
   it('termine la session avec les index et l’instant fournis', () => {
     const plan = buildPlan({ mode: 'learning', maxItems: 1 });
     const start = sessionEngine.start(plan, 1_000);
-    const revealed = sessionEngine.revealAnswer(start);
     const result = sessionEngine.submitAnswer(
-      revealed,
+      revealed(start),
       answerInput(currentItemId(start), 'good', { now: 12_345 }),
     );
     expect(result.ok).toBe(true);
@@ -334,12 +448,58 @@ describe('engine — réponse, feedback et progression', () => {
   it('ne mute jamais l’état d’entrée', () => {
     const plan = buildPlan({ mode: 'learning', maxItems: 3 });
     const start = sessionEngine.start(plan, 1_000);
-    const revealed = sessionEngine.revealAnswer(start);
-    const before = JSON.stringify(revealed);
-    const result = sessionEngine.submitAnswer(revealed, answerInput(currentItemId(start), 'good'));
+    const revealedState = revealed(start);
+    const before = JSON.stringify(revealedState);
+    const result = sessionEngine.submitAnswer(
+      revealedState,
+      answerInput(currentItemId(start), 'good'),
+    );
     expect(result.ok).toBe(true);
-    expect(JSON.stringify(revealed)).toBe(before);
-    expect(revealed.answers).toEqual([]);
-    expect(revealed.phase).toBe('revealed');
+    expect(JSON.stringify(revealedState)).toBe(before);
+    expect(revealedState.answers).toEqual([]);
+    expect(revealedState.phase).toBe('revealed');
+  });
+});
+
+describe('engine — prétest L18', () => {
+  it('prétest sans feedback de correction', () => {
+    // `discovery` marque chaque première exposition comme prétest (voir builder).
+    const built = buildSession(
+      makeRequest({ mode: 'discovery', maxItems: 3 }),
+      makeContext({ cards: new Map() }),
+    );
+    expect(built.ok).toBe(true);
+    if (!built.ok) {
+      return;
+    }
+    const plan = built.plan;
+    expect(plan.items.every((item) => item.isPretest)).toBe(true);
+
+    const start = sessionEngine.start(plan, 1_000);
+    const item = plan.items[0]!;
+    const result = sessionEngine.submitAnswer(
+      revealed(start),
+      answerInput(currentItemId(start), 'again'),
+    );
+    expect(result.ok).toBe(true);
+    if (!result.ok) {
+      return;
+    }
+    // La devinette n'est pas corrigée : aucun feedback ne révèle la réponse.
+    expect(result.submission.feedback).toBeNull();
+    expect(result.submission.answer.isPretest).toBe(true);
+    expect(result.submission.answer.itemId).toBe(item.id);
+
+    // Hors prétest, le même moteur émet bien un feedback correctif (L13).
+    const gradedPlan = buildPlan({ mode: 'learning', maxItems: 1 });
+    const graded = sessionEngine.submitAnswer(
+      revealed(sessionEngine.start(gradedPlan, 1_000)),
+      answerInput(gradedPlan.items[0]!.id, 'good'),
+    );
+    expect(graded.ok).toBe(true);
+    if (graded.ok) {
+      expect(graded.submission.answer.isPretest).toBe(false);
+      expect(graded.submission.feedback).not.toBeNull();
+    }
   });
 });
