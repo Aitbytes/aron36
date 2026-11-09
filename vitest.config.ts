@@ -16,6 +16,9 @@ export default defineConfig({
     css: true,
     restoreMocks: true,
     clearMocks: true,
+    // Les worktrees de travail (agents en parallèle) contiennent des copies du
+    // dépôt : sans exclusion, Vitest ramasse leurs tests et fausse le total.
+    exclude: ['**/node_modules/**', '**/dist/**', '**/.worktrees/**'],
     coverage: {
       provider: 'v8',
       reporter: ['text', 'html', 'lcov'],
