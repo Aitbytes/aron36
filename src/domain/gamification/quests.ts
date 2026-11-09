@@ -1,4 +1,5 @@
-import { QUESTIONS_PER_ACT } from '@/domain/shared/types';
+import { ACCURACY_CREDIT, QUESTIONS_PER_ACT } from '@/domain/shared/types';
+import type { ConfidenceRating, EpochMs, QuestionId, ReviewGrade } from '@/domain/shared/types';
 import { createPrng } from './prng';
 import type {
   QuestBoard,
@@ -17,9 +18,12 @@ import { DAILY_QUEST_COUNT } from './types';
  * Anti-objectifs servis par ce module :
  * - **pas de dark pattern** : le tirage est déterministe (`dayKey` + `seed`),
  *   donc stable après rechargement, sans compte à rebours ni notification ;
- *   une quête non terminée expire sans conséquence ;
+ *   une quête non terminée expire sans conséquence (aucun reroll, aucune
+ *   relance artificielle) ;
  * - **pas de ludification substitutive** : une quête ne progresse que sur des
- *   actes de production, et `progress` ne dépasse jamais `target`.
+ *   actes de production, et `progress` ne dépasse jamais `target` ;
+ * - **pas de reconnaissance déguisée en rappel** : un QCM ne fait progresser
+ *   aucune quête, parce qu'aucun objectif ne mesure une discrimination.
  */
 
 /** Cible de progression d'un objectif, déduite de sa forme. */
@@ -49,47 +53,206 @@ export function questTarget(objective: QuestObjective): number {
 }
 
 /**
- * Progression apportée par une réponse, pour un objectif donné.
+ * Effet d'une réponse sur une quête.
  *
- * Le contrat gelé `QuestProgressInput` ne transporte ni identifiant de question,
- * ni acte, ni confiance. Les objectifs qui en dépendent (`distinct-questions`,
- * `act-recall`, `calibration`) sont donc évalués avec le meilleur proxy
- * disponible — la réponse elle-même — et `minAccuracy` des objectifs de
- * précision n'est pas vérifiable dans `QuestState`. Points à arbitrer en Phase 3
- * (voir le rapport de lot) ; ces proxys rendent les quêtes atteignables au lieu
- * de les rendre impossibles.
+ * Les faits bruts sont volontairement séparés de leur interprétation : `gained`
+ * est l'incrément de `progress`, `resets` traduit l'échec d'une série
+ * « d'affilée », et `attempts`/`correct`/`seenQuestionId` alimentent l'état
+ * nécessaire aux objectifs qui raisonnent sur plusieurs réponses (précision,
+ * calibration, couverture).
  */
-function advance(objective: QuestObjective, input: QuestProgressInput): number {
+interface QuestAdvance {
+  /** Réponse prise en compte par cette quête. */
+  readonly attempted: boolean;
+  /** Réponse réussie (`grade !== 'again'`). */
+  readonly succeeded: boolean;
+  /** La série en cours est rompue : `progress` repart de zéro. */
+  readonly resets: boolean;
+  /** Incrément de progression. */
+  readonly gained: number;
+  /** Question à mémoriser dans `seenQuestionIds`, `null` si déjà comptée. */
+  readonly seenQuestionId: QuestionId | null;
+}
+
+/** Aucun effet : la réponse ne concerne pas cette quête. */
+const NO_ADVANCE: QuestAdvance = {
+  attempted: false,
+  succeeded: false,
+  resets: false,
+  gained: 0,
+  seenQuestionId: null,
+};
+
+/** Réponse comptée sans logique de série. */
+function counted(succeeded: boolean, gained: number): QuestAdvance {
+  return { attempted: true, succeeded, resets: false, gained, seenQuestionId: null };
+}
+
+/** Crédit de réussite d'une note, pour la calibration (L12). */
+function creditOf(grade: ReviewGrade): number {
+  return ACCURACY_CREDIT[grade];
+}
+
+/**
+ * Écart entre confiance déclarée et réussite réelle, dans [0, 1].
+ * `confidence / 5` ramène l'échelle de Likert sur [0, 1].
+ */
+function calibrationGapOf(confidence: ConfidenceRating, grade: ReviewGrade): number {
+  return Math.abs(confidence / 5 - creditOf(grade));
+}
+
+/**
+ * Effet réel d'une réponse sur un objectif.
+ *
+ * Aucun proxy : chaque objectif lit le fait dont il dépend — identité de la
+ * question (`distinct-questions`, `act-recall`), acte (`act-recall`), confiance
+ * (`calibration`), crédit de la note (`accuracy`, `hint-free`).
+ *
+ * Tous les objectifs autres que `answer-count` exigent une **production** : ce
+ * sont les seuls faits qui prouvent une restitution.
+ */
+function advanceFor(
+  objective: QuestObjective,
+  quest: QuestState,
+  input: QuestProgressInput,
+): QuestAdvance {
   const succeeded = input.grade !== 'again';
   const isProduction = input.exerciseKind === 'production';
+  const directionMatches = objectiveDirection(objective);
+  if (directionMatches !== null && directionMatches !== input.direction) {
+    return NO_ADVANCE;
+  }
 
   switch (objective.kind) {
     case 'answer-count':
-      return (objective.direction === null || objective.direction === input.direction) &&
-        (!objective.productionOnly || isProduction)
-        ? 1
-        : 0;
-    case 'accuracy':
-      return (objective.direction === null || objective.direction === input.direction) && succeeded
-        ? 1
-        : 0;
-    case 'distinct-questions':
-      return isProduction ? 1 : 0;
+      if (objective.productionOnly && !isProduction) {
+        return NO_ADVANCE;
+      }
+      return counted(succeeded, 1);
+    case 'accuracy': {
+      if (!isProduction) {
+        return NO_ADVANCE;
+      }
+      if (creditOf(input.grade) < objective.minAccuracy) {
+        // « d'affilée » : une réponse sous le seuil rompt la série au lieu de
+        // s'ajouter à un total complaisant.
+        return { attempted: true, succeeded, resets: true, gained: 0, seenQuestionId: null };
+      }
+      return counted(true, 1);
+    }
+    case 'distinct-questions': {
+      if (!isProduction) {
+        return NO_ADVANCE;
+      }
+      const alreadySeen = quest.seenQuestionIds.includes(input.questionId);
+      return {
+        attempted: true,
+        succeeded,
+        resets: false,
+        gained: alreadySeen ? 0 : 1,
+        seenQuestionId: alreadySeen ? null : input.questionId,
+      };
+    }
     case 'new-cards':
-      return input.wasNewCard ? 1 : 0;
-    case 'hint-free':
-      return input.hintsUsed === 0 && succeeded ? 1 : 0;
+      if (!isProduction) {
+        return NO_ADVANCE;
+      }
+      return counted(succeeded, input.wasNewCard ? 1 : 0);
+    case 'hint-free': {
+      // Un QCM ou une réponse aidée ne prouve aucune restitution sans filet.
+      if (!isProduction || input.hintsUsed > 0) {
+        return NO_ADVANCE;
+      }
+      // Même barre de justesse que la précision : le crédit de la note doit
+      // atteindre `minAccuracy` (un `hard` à 0.5 ne suffit pas à 0.9).
+      return counted(succeeded, creditOf(input.grade) >= objective.minAccuracy ? 1 : 0);
+    }
     case 'speed':
-      return input.responseTimeMs <= objective.maxResponseTimeMs ? 1 : 0;
-    case 'act-recall':
-      return isProduction && succeeded ? 1 : 0;
-    case 'calibration':
-      return succeeded ? 1 : 0;
+      if (!isProduction) {
+        return NO_ADVANCE;
+      }
+      return counted(succeeded, input.responseTimeMs <= objective.maxResponseTimeMs ? 1 : 0);
+    case 'act-recall': {
+      // Réciter un acte : production, réussie, dans **cet** acte, et sur une
+      // question pas encore comptée (sinon une question répétée suffirait).
+      if (!isProduction || !succeeded || input.actId !== objective.actId) {
+        return NO_ADVANCE;
+      }
+      const alreadySeen = quest.seenQuestionIds.includes(input.questionId);
+      return {
+        attempted: true,
+        succeeded: true,
+        resets: false,
+        gained: alreadySeen ? 0 : 1,
+        seenQuestionId: alreadySeen ? null : input.questionId,
+      };
+    }
+    case 'calibration': {
+      if (input.confidence === null) {
+        return NO_ADVANCE;
+      }
+      const aligned = calibrationGapOf(input.confidence, input.grade) <= objective.maxGap;
+      // `maxGap` est un seuil par réponse : une réponse mal calibrée ne compte
+      // pas, elle n'est pas noyée dans une moyenne complaisante.
+      return {
+        attempted: true,
+        succeeded,
+        resets: false,
+        gained: aligned ? 1 : 0,
+        seenQuestionId: null,
+      };
+    }
     case 'evening-review':
-      return input.window === 'evening' ? 1 : 0;
+      if (!isProduction) {
+        return NO_ADVANCE;
+      }
+      return counted(succeeded, input.window === 'evening' ? 1 : 0);
     case 'morning-review':
-      return input.window === 'morning' ? 1 : 0;
+      if (!isProduction) {
+        return NO_ADVANCE;
+      }
+      return counted(succeeded, input.window === 'morning' ? 1 : 0);
   }
+}
+
+/** Direction imposée par un objectif, ou `null` si toutes conviennent. */
+function objectiveDirection(objective: QuestObjective): QuestProgressInput['direction'] | null {
+  if (objective.kind === 'answer-count' || objective.kind === 'accuracy') {
+    return objective.direction;
+  }
+  return null;
+}
+
+/**
+ * État suivant d'une quête après une réponse.
+ *
+ * `completedAt` est écrit au **premier** plafonnement puis n'est plus jamais
+ * effacé : une quête accomplie le reste, même si une série d'affilée retombe
+ * ensuite — aucune punition rétroactive.
+ */
+function nextQuestState(quest: QuestState, advance: QuestAdvance, now: EpochMs): QuestState {
+  const completed = quest.completedAt !== null;
+  const progress =
+    advance.resets && !completed ? 0 : Math.min(quest.progress + advance.gained, quest.target);
+  const attempts = quest.attempts + (advance.attempted ? 1 : 0);
+  const correct = quest.correct + (advance.succeeded ? 1 : 0);
+  const seenQuestionIds =
+    advance.seenQuestionId === null
+      ? quest.seenQuestionIds
+      : [...quest.seenQuestionIds, advance.seenQuestionId];
+  const completedAt = quest.completedAt ?? (progress >= quest.target ? now : null);
+
+  if (
+    progress === quest.progress &&
+    attempts === quest.attempts &&
+    correct === quest.correct &&
+    seenQuestionIds === quest.seenQuestionIds &&
+    completedAt === quest.completedAt
+  ) {
+    return quest;
+  }
+
+  return { ...quest, progress, attempts, correct, seenQuestionIds, completedAt };
 }
 
 /** Dédoublonne des définitions par identifiant, en conservant le premier ordre. */
@@ -125,17 +288,21 @@ function boardFor(input: QuestBoardRequest): QuestBoard {
     progress: 0,
     target: questTarget(definition.objective),
     completedAt: null,
+    attempts: 0,
+    correct: 0,
+    seenQuestionIds: [],
   }));
 
-  return { dayKey, seed, quests, rerollUsed: false };
+  return { dayKey, seed, quests };
 }
 
 /**
  * Nouveau tableau après une réponse.
  *
  * Le tableau conserve exactement les quêtes qu'il contenait : `progress` ne crée
- * jamais de quête, ne change ni la cible ni `completedAt`. Une définition absente
- * du catalogue laisse la quête intacte (elle ne peut pas être évaluée).
+ * jamais de quête et ne change ni la cible ni `completedAt` d'une quête déjà
+ * terminée. Une définition absente du catalogue laisse la quête intacte (elle ne
+ * peut pas être évaluée).
  */
 function progress(
   board: QuestBoard,
@@ -150,16 +317,12 @@ function progress(
     if (definition === undefined) {
       return quest;
     }
-    const gained = advance(definition.objective, input);
-    if (gained <= 0) {
-      return quest;
-    }
-    const nextProgress = Math.min(quest.progress + gained, quest.target);
-    if (nextProgress === quest.progress) {
+    const next = nextQuestState(quest, advanceFor(definition.objective, quest, input), input.now);
+    if (next === quest) {
       return quest;
     }
     changed = true;
-    return { ...quest, progress: nextProgress };
+    return next;
   });
 
   return changed ? { ...board, quests } : board;

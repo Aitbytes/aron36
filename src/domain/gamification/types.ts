@@ -1,7 +1,9 @@
 import { QUESTION_COUNT } from '@/domain/shared/types';
 import type {
   ActId,
+  ConfidenceRating,
   DayKey,
+  Days,
   DrillDirection,
   DurationMs,
   EpochMs,
@@ -15,7 +17,7 @@ import type {
   SessionId,
   SessionWindow,
 } from '@/domain/shared/types';
-import type { CardState, ReviewLog } from '@/domain/srs/types';
+import type { ReviewLog } from '@/domain/srs/types';
 import type { QuestionMastery } from '@/domain/mastery/types';
 import type { SessionLog } from '@/domain/session/types';
 
@@ -208,9 +210,20 @@ export interface DirectionMetrics {
   readonly averageResponseTimeMs: DurationMs | null;
 }
 
+/** Résultat d'un Grand Oral : durée réelle et précision mesurée. */
+export interface OralExamResult {
+  readonly durationMs: DurationMs;
+  readonly accuracy: Ratio;
+}
+
 /**
  * Métriques agrégées du joueur, recalculées depuis `ReviewLog` et `SessionLog`.
  * Aucune de ces valeurs n'est persistée : elles sont dérivées.
+ *
+ * Règle de lecture : **toute métrique qui prétend mesurer une production**
+ * (précision par direction, réponses sans indice, session parfaite, questions
+ * distinctes) exclut la discrimination. Seul `totalAnswers` compte tout, parce
+ * qu'il ne prétend rien mesurer d'autre qu'un volume d'activité.
  */
 export interface PlayerMetrics {
   readonly totalAnswers: number;
@@ -219,23 +232,44 @@ export interface PlayerMetrics {
   readonly distinctQuestionsAnswered: number;
   readonly masteredQuestions: number;
   readonly masteredActs: number;
+  /**
+   * Ensemble **exact** des actes maîtrisés (L14), jamais un compteur.
+   * Un compteur `masteredActs >= actId` laisserait passer les actes I + III
+   * maîtrisés comme valant l'acte II : l'appartenance est la seule vérité.
+   */
+  readonly masteredActIds: readonly ActId[];
   /** Meilleure série jamais atteinte, en jours. */
   readonly bestStreakDays: number;
+  /** Sessions parfaites **100 % production** d'au moins `PERFECT_SESSION_MIN_ITEMS` items. */
   readonly perfectSessions: number;
+  /**
+   * Plus grand nombre d'items d'une session parfaite 100 % production.
+   * Permet d'évaluer `perfect-session.minItems`, que `perfectSessions` (un
+   * compteur) ne peut pas porter.
+   */
+  readonly bestPerfectSessionItemCount: number;
   readonly collectionSize: number;
   readonly personalHooks: number;
   readonly oralExamPasses: number;
   readonly eveningSessions: number;
   readonly morningSessions: number;
-  /** Réponses données sans aucun indice. */
+  /** Réponses de production données sans aucun indice. */
   readonly hintFreeAnswers: number;
-  /** Précision des réponses sans indice, dans [0, 1]. */
-  readonly hintFreeAccuracy: Ratio;
+  /**
+   * Précision des productions sans indice, dans [0, 1], ou `null` s'il n'existe
+   * aucune production sans indice : un QCM n'en produit jamais.
+   */
+  readonly hintFreeAccuracy: Ratio | null;
   /** Plus grand nombre de jours consécutifs sans activité. */
   readonly longestGapDays: number;
+  /** Métriques par direction, **productions uniquement**. */
   readonly answersByDirection: Readonly<Record<DrillDirection, DirectionMetrics>>;
   /** Écart moyen |confiance/5 − réussite|, ou `null` sans donnée (L12). */
   readonly calibrationGap: Ratio | null;
+  /** Productions accompagnées d'un jugement de confiance (L12). */
+  readonly calibrationAnswers: number;
+  /** Meilleur Grand Oral mesuré (durée + précision), ou `null` s'il n'y en a aucun. */
+  readonly bestOralExam: OralExamResult | null;
 }
 
 /** Niveau de rareté d'une carte de collection. */
@@ -399,7 +433,21 @@ export interface QuestState {
   readonly dayKey: DayKey;
   readonly progress: number;
   readonly target: number;
+  /**
+   * Date du **premier** plafonnement de `progress`, ou `null` tant que la quête
+   * n'est pas terminée. Une fois écrite, elle n'est jamais effacée : une quête
+   * accomplie le reste, même si la progression d'affilée retombe ensuite.
+   */
   readonly completedAt: EpochMs | null;
+  /** Réponses prises en compte par cette quête aujourd'hui. */
+  readonly attempts: number;
+  /** Réponses réussies parmi `attempts` (`grade !== 'again'`). */
+  readonly correct: number;
+  /**
+   * Questions déjà comptées, pour que `distinct-questions` et `act-recall`
+   * mesurent une couverture réelle et non un nombre de répétitions.
+   */
+  readonly seenQuestionIds: readonly QuestionId[];
 }
 
 /** Tableau des quêtes du jour (3 quêtes, tirage déterministe depuis `seed`). */
@@ -407,8 +455,6 @@ export interface QuestBoard {
   readonly dayKey: DayKey;
   readonly seed: RandomSeed;
   readonly quests: readonly QuestState[];
-  /** Un seul reroll autorisé par jour, sans pénalité. */
-  readonly rerollUsed: boolean;
 }
 
 /** Nombre de quêtes quotidiennes. */
@@ -467,8 +513,6 @@ export interface PlayerProgressView {
 /** Contexte d'une attribution d'XP. */
 export interface XpContext {
   readonly rules: XpRules;
-  /** Niveau courant, après application du gain en cours si nécessaire. */
-  readonly level: LevelState;
   /** Réponses déjà données aujourd'hui sur la même question (anti-farm). */
   readonly sameDayAnswersForQuestion: number;
   /** `true` si la question n'a jamais été produite avec succès auparavant. */
@@ -525,17 +569,29 @@ export interface StreakUpdateInput {
   readonly rules: StreakRules;
 }
 
-/** Entrée de progression d'une quête après une réponse. */
+/**
+ * Entrée de progression d'une quête après une réponse.
+ *
+ * Chaque objectif est évalué sur les faits réels de la réponse : identité de la
+ * question (unicité), acte (récitation ciblée), confiance (calibration) et
+ * horloge injectée (`now`, pour dater `completedAt`). Aucun proxy.
+ */
 export interface QuestProgressInput {
+  readonly questionId: QuestionId;
+  readonly actId: ActId;
   readonly direction: DrillDirection;
   readonly exerciseKind: ExerciseKind;
   readonly grade: ReviewGrade;
+  /** Confiance déclarée avant révélation, ou `null` si désactivée (L12). */
+  readonly confidence: ConfidenceRating | null;
   readonly responseTimeMs: DurationMs;
   readonly hintsUsed: number;
   /** `true` si la carte était en phase `new` avant cette réponse. */
   readonly wasNewCard: boolean;
   /** Fenêtre de journée de la réponse (L17). */
   readonly window: SessionWindow;
+  /** Horloge injectée : date le premier plafonnement (`completedAt`). */
+  readonly now: EpochMs;
 }
 
 /** Génération et progression des quêtes quotidiennes. */
@@ -564,13 +620,19 @@ export interface CollectionUpdate {
   readonly state: CollectionState;
   /** `true` si cette évaluation a créé la carte. */
   readonly unlocked: boolean;
-  /** Palier précédent, `null` si la carte n'existait pas encore. */
+  /**
+   * Palier de la carte **avant** cette évaluation, `null` si elle n'existait pas.
+   * Un palier supérieur dans `state` signale une progression de palier.
+   */
   readonly previousTier: 1 | 2 | 3 | 4 | 5 | null;
 }
 
 /** Tenue à jour de la collection des 36 cartes. */
 export interface CollectionEvaluator {
-  /** N'ajoute une carte qu'à la maîtrise (`COLLECTION_ENTRY_MIN_INTERVAL_DAYS`). */
+  /**
+   * N'ajoute une carte qu'à la maîtrise (`COLLECTION_ENTRY_MIN_INTERVAL_DAYS`) et
+   * recalcule son palier à chaque évaluation depuis `intervalDays`.
+   */
   update(input: CollectionUpdateInput): CollectionUpdate;
 }
 
@@ -578,6 +640,8 @@ export interface CollectionEvaluator {
 export interface CollectionUpdateInput {
   readonly state: CollectionState;
   readonly mastery: QuestionMastery;
+  /** Intervalle SRS courant de la carte, en jours : source du palier de maîtrise. */
+  readonly intervalDays: Days;
   readonly now: EpochMs;
 }
 
@@ -585,19 +649,23 @@ export interface CollectionUpdateInput {
 export interface MetricsInput {
   readonly reviewLogs: readonly ReviewLog[];
   readonly sessionLogs: readonly SessionLog[];
-  readonly cards: ReadonlyMap<QuestionId, CardState>;
   readonly mastery: readonly QuestionMastery[];
   readonly hooksCount: number;
   readonly collection: CollectionState;
   readonly streak: StreakState;
   readonly oralExamPasses: number;
+  /**
+   * Meilleur Grand Oral mesuré par la couche application : le domaine ne peut
+   * pas le déduire des journaux (durée et précision de récitation orale).
+   */
+  readonly bestOralExam: OralExamResult | null;
 }
 
 /**
  * Calcul des métriques affichées et des conditions de badge.
  *
- * Dépend de `mastery` : `masteredQuestions` et `masteredActs` ne peuvent pas
- * être calculés sans les critères de maîtrise.
+ * Dépend de `mastery` : `masteredQuestions`, `masteredActs` et `masteredActIds`
+ * ne peuvent pas être calculés sans les critères de maîtrise.
  */
 export interface MetricsCalculator {
   compute(input: MetricsInput): PlayerMetrics;

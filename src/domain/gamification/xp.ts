@@ -113,16 +113,22 @@ function forAnswer(input: AnswerXpInput, context: XpContext): XpAward {
 
 /**
  * Bonus de fin de session : 10 XP pour une session terminée, + 15 XP si elle est
- * parfaite (100 % et au moins `PERFECT_SESSION_MIN_ITEMS` items).
+ * parfaite (100 %, au moins `PERFECT_SESSION_MIN_ITEMS` items et **aucun QCM**).
  *
  * `breakdown` vaut `null` : ces bonus ne portent pas sur une question précise
  * (contrat `XpAward`). Ils dérivent d'actes de production déjà récompensés, donc
  * ils ne contournent pas l'anti-farm par question.
+ *
+ * Le bonus « session parfaite » exige une session entièrement composée de
+ * productions : un QCM parfait ne prouve aucune restitution (anti-objectif
+ * « pas de reconnaissance déguisée en rappel »).
  */
 function forSession(input: SessionXpInput, context: XpContext): XpAward {
   const completion = input.itemCount > 0 ? context.rules.sessionCompletionXp : 0;
   const perfect =
-    input.itemCount >= PERFECT_SESSION_MIN_ITEMS && input.correctCount === input.itemCount
+    input.itemCount >= PERFECT_SESSION_MIN_ITEMS &&
+    input.productionCount === input.itemCount &&
+    input.correctCount === input.itemCount
       ? context.rules.perfectSessionBonus
       : 0;
   const total = completion + perfect;

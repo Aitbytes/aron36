@@ -8,20 +8,28 @@ import { DAILY_QUEST_COUNT } from './types';
 /**
  * Anti-objectifs servis (docs/ARCHITECTURE.md § 8.7) :
  * - « le tableau du jour est stable pour un même dayKey » : aucun dark pattern,
- *   aucune relance aléatoire pour faire revenir le joueur ;
+ *   aucun reroll pour faire revenir le joueur ;
  * - une quête ne progresse que sur des actes de production et ne dépasse jamais
- *   sa cible.
+ *   sa cible ;
+ * - chaque objectif est évalué sur le fait dont il dépend (question, acte,
+ *   confiance), jamais sur un proxy.
  */
+
+const NOW = 1_700_000_000_000;
 
 function progress(overrides: Partial<QuestProgressInput> = {}): QuestProgressInput {
   return {
+    questionId: 1,
+    actId: 1,
     direction: 'keyword-to-question',
     exerciseKind: 'production',
     grade: 'good',
+    confidence: null,
     responseTimeMs: 2000,
     hintsUsed: 0,
     wasNewCard: false,
     window: 'day',
+    now: NOW,
     ...overrides,
   };
 }
@@ -49,16 +57,22 @@ function boardFor(
 }
 
 describe('quests — tirage quotidien déterministe', () => {
-  it('tire exactement 3 quêtes, sans doublon', () => {
+  it('tire exactement 3 quêtes, sans doublon, à l’état initial', () => {
     const board = boardFor(QUEST_DEFINITIONS);
     expect(board.quests).toHaveLength(DAILY_QUEST_COUNT);
     expect(new Set(board.quests.map((quest) => quest.questId)).size).toBe(DAILY_QUEST_COUNT);
     expect(board.dayKey).toBe('2024-03-10');
     expect(board.seed).toBe('graine-de-test');
-    expect(board.rerollUsed).toBe(false);
-    expect(board.quests.every((quest) => quest.progress === 0 && quest.completedAt === null)).toBe(
-      true,
-    );
+    expect(
+      board.quests.every(
+        (quest) =>
+          quest.progress === 0 &&
+          quest.completedAt === null &&
+          quest.attempts === 0 &&
+          quest.correct === 0 &&
+          quest.seenQuestionIds.length === 0,
+      ),
+    ).toBe(true);
   });
 
   it('rend le même tableau après rechargement (même dayKey, même seed)', () => {
@@ -195,8 +209,10 @@ describe('quests — progression', () => {
         progress: 0,
         target: questTarget(quest.objective),
         completedAt: null,
+        attempts: 0,
+        correct: 0,
+        seenQuestionIds: [],
       })),
-      rerollUsed: false,
     };
   }
 
@@ -205,6 +221,10 @@ describe('quests — progression', () => {
     const single: QuestDefinition[] = catalogue.filter((quest) => quest.id === questId);
     const updated = questGenerator.progress(board, single, input);
     return updated.quests.find((quest) => quest.questId === questId)?.progress ?? -1;
+  }
+
+  function stateOf(board: QuestBoard, questId: string): QuestBoard['quests'][number] | undefined {
+    return board.quests.find((quest) => quest.questId === questId);
   }
 
   it('progresse un objectif de comptage, filtré par direction et production', () => {
@@ -224,22 +244,113 @@ describe('quests — progression', () => {
     );
   });
 
+  it('rompt la série d’affilée au lieu de cumuler malgré une erreur', () => {
+    // Ancien proxy : toute réponse réussie s’additionnait, même après une erreur.
+    const board = fullBoard();
+    const single = catalogue.filter((quest) => quest.id === 'prec');
+    const succeeded = questGenerator.progress(board, single, progress());
+    expect(stateOf(succeeded, 'prec')?.progress).toBe(1);
+
+    const failed = questGenerator.progress(succeeded, single, progress({ grade: 'again' }));
+    expect(stateOf(failed, 'prec')?.progress).toBe(0);
+    expect(stateOf(succeeded, 'prec')?.progress).toBe(1);
+  });
+
+  it('honore minAccuracy d’un objectif de précision', () => {
+    const strict = [
+      definition('strict', { kind: 'accuracy', minAccuracy: 0.9, minAnswers: 3, direction: null }),
+    ];
+    const board = boardFor(strict);
+    // Ancien proxy : les trois réponses « réussies » auraient suffi à clôturer.
+    const scenario = [
+      progress({ grade: 'good' }), // crédit 1 ≥ 0.9 → 1
+      progress({ grade: 'good' }), // crédit 1 ≥ 0.9 → 2
+      progress({ grade: 'hard' }), // crédit 0.5 < 0.9 : sous le seuil, série rompue
+    ];
+    let current = board;
+    for (const input of scenario) {
+      current = questGenerator.progress(current, strict, input);
+    }
+    const quest = stateOf(current, 'strict');
+    expect(quest?.attempts).toBe(3);
+    expect(quest?.correct).toBe(3);
+    expect(quest?.progress).toBe(0);
+    expect(quest?.completedAt).toBeNull();
+  });
+
   it('progresse les objectifs de nouveauté, d’indice et de rapidité', () => {
     const board = fullBoard();
     expect(progressQuest(board, 'neuves', progress({ wasNewCard: true }))).toBe(1);
     expect(progressQuest(board, 'neuves', progress({ wasNewCard: false }))).toBe(0);
     expect(progressQuest(board, 'sans-indice', progress({ hintsUsed: 0 }))).toBe(1);
+    // `hard` est une réussite mais son crédit (0.5) est sous `minAccuracy` 0.9.
+    expect(progressQuest(board, 'sans-indice', progress({ grade: 'hard' }))).toBe(0);
     expect(progressQuest(board, 'sans-indice', progress({ hintsUsed: 2 }))).toBe(0);
     expect(progressQuest(board, 'vitesse', progress({ responseTimeMs: 3000 }))).toBe(1);
     expect(progressQuest(board, 'vitesse', progress({ responseTimeMs: 3001 }))).toBe(0);
   });
 
-  it('progresse les objectifs dérivés (distinctes, acte, calibration)', () => {
+  it('ne compte les questions distinctes qu’une seule fois', () => {
+    // Ancien proxy : chaque production comptait, même la même question répétée.
     const board = fullBoard();
-    expect(progressQuest(board, 'distinctes', progress())).toBe(1);
-    expect(progressQuest(board, 'acte', progress())).toBe(1);
+    const single = catalogue.filter((quest) => quest.id === 'distinctes');
+    let current = board;
+    for (let index = 0; index < 5; index += 1) {
+      current = questGenerator.progress(current, single, progress({ questionId: 7 }));
+    }
+    expect(stateOf(current, 'distinctes')?.progress).toBe(1);
+    expect(stateOf(current, 'distinctes')?.seenQuestionIds).toEqual([7]);
+
+    // Une deuxième question distincte fait bien avancer la quête.
+    const second = questGenerator.progress(current, single, progress({ questionId: 8 }));
+    expect(stateOf(second, 'distinctes')?.progress).toBe(2);
+    expect(stateOf(second, 'distinctes')?.completedAt).toBe(NOW);
+
+    // Un QCM ne couvre aucune question.
+    expect(progressQuest(board, 'distinctes', progress({ exerciseKind: 'discrimination' }))).toBe(
+      0,
+    );
+  });
+
+  it('n’avance l’acte visé que sur des productions de cet acte', () => {
+    // Ancien proxy : l’acte n’était jamais lu, toute réussite comptait.
+    const board = fullBoard();
+    expect(progressQuest(board, 'acte', progress({ actId: 1 }))).toBe(1);
+    expect(progressQuest(board, 'acte', progress({ actId: 2 }))).toBe(0);
+    expect(progressQuest(board, 'acte', progress({ actId: 3 }))).toBe(0);
     expect(progressQuest(board, 'acte', progress({ grade: 'again' }))).toBe(0);
-    expect(progressQuest(board, 'calibration', progress())).toBe(1);
+    expect(progressQuest(board, 'acte', progress({ exerciseKind: 'discrimination' }))).toBe(0);
+  });
+
+  it('exige des questions distinctes pour réciter un acte entier', () => {
+    const board = fullBoard();
+    const single = catalogue.filter((quest) => quest.id === 'acte');
+    let current = board;
+    for (let index = 0; index < 3; index += 1) {
+      current = questGenerator.progress(current, single, progress({ questionId: 1, actId: 1 }));
+    }
+    expect(stateOf(current, 'acte')?.progress).toBe(1);
+    expect(stateOf(current, 'acte')?.target).toBe(12);
+  });
+
+  it('n’avance la calibration que sur un écart confiance/réussite réel', () => {
+    // Ancien proxy : toute réponse réussie comptait, quel que soit `maxGap`.
+    const board = fullBoard();
+    // Confiance 1 sur une réussite facile : écart 0.8 > 0.1 → aucun progrès.
+    expect(progressQuest(board, 'calibration', progress({ confidence: 1, grade: 'easy' }))).toBe(0);
+    // Confiance 5 sur un échec : écart 1 → aucun progrès.
+    expect(progressQuest(board, 'calibration', progress({ confidence: 5, grade: 'again' }))).toBe(
+      0,
+    );
+    // Sans jugement de confiance : la quête ne progresse pas du tout.
+    const withoutConfidence = progressQuest(board, 'calibration', progress({ confidence: null }));
+    expect(withoutConfidence).toBe(0);
+    // Confiance alignée : progrès.
+    expect(progressQuest(board, 'calibration', progress({ confidence: 5, grade: 'easy' }))).toBe(1);
+    // Écart exactement égal à `maxGap` : accepté (borne inclusive).
+    expect(progressQuest(board, 'calibration', progress({ confidence: 3, grade: 'hard' }))).toBe(1);
+    // Écart juste au-dessus du seuil : refusé.
+    expect(progressQuest(board, 'calibration', progress({ confidence: 4, grade: 'hard' }))).toBe(0);
   });
 
   it('distingue les quêtes du soir et du matin (L17)', () => {
@@ -251,15 +362,30 @@ describe('quests — progression', () => {
     expect(morning).toEqual([1, 0, 0, 0]);
   });
 
-  it('plafonne la progression à la cible', () => {
+  it('plafonne la progression à la cible et date le premier plafonnement', () => {
     let board = fullBoard();
     const single = catalogue.filter((quest) => quest.id === 'compte');
-    for (let index = 0; index < 10; index += 1) {
-      board = questGenerator.progress(board, single, progress());
-    }
-    const quest = board.quests.find((state) => state.questId === 'compte');
-    expect(quest?.target).toBe(2);
-    expect(quest?.progress).toBe(2);
+    board = questGenerator.progress(board, single, progress({ now: 10 }));
+    expect(stateOf(board, 'compte')?.completedAt).toBeNull();
+    board = questGenerator.progress(board, single, progress({ now: 20 }));
+    expect(stateOf(board, 'compte')?.progress).toBe(2);
+    expect(stateOf(board, 'compte')?.completedAt).toBe(20);
+
+    // Une réponse ultérieure n’écrase pas la date de première obtention.
+    board = questGenerator.progress(board, single, progress({ now: 30 }));
+    expect(stateOf(board, 'compte')?.completedAt).toBe(20);
+  });
+
+  it('garde une quête accomplie à sa cible, même si la série retombe', () => {
+    let board = fullBoard();
+    const single = catalogue.filter((quest) => quest.id === 'prec');
+    board = questGenerator.progress(board, single, progress({ now: 10 }));
+    board = questGenerator.progress(board, single, progress({ now: 20 }));
+    expect(stateOf(board, 'prec')?.completedAt).toBe(20);
+
+    board = questGenerator.progress(board, single, progress({ grade: 'again', now: 30 }));
+    expect(stateOf(board, 'prec')?.progress).toBe(2);
+    expect(stateOf(board, 'prec')?.completedAt).toBe(20);
   });
 
   it('ne crée jamais de quête et ne touche pas aux quêtes inconnues', () => {
@@ -278,8 +404,10 @@ describe('quests — progression', () => {
       progress({
         exerciseKind: 'discrimination',
         grade: 'again',
+        confidence: null,
         hintsUsed: 3,
         responseTimeMs: 99_999,
+        wasNewCard: false,
       }),
     );
     expect(updated).toBe(board);

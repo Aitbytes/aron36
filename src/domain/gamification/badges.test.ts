@@ -1,8 +1,12 @@
 import { describe, expect, it } from 'vitest';
 
-import { DRILL_DIRECTIONS } from '@/domain/shared/types';
+import { DAY_MS, DRILL_DIRECTIONS } from '@/domain/shared/types';
+import type { DrillDirection } from '@/domain/shared/types';
+import type { ReviewLog } from '@/domain/srs/types';
 import type { BadgeCondition, BadgeTier, DirectionMetrics, PlayerMetrics } from './types';
 import { BADGE_DEFINITIONS, badgeEvaluator, conditionProgress, metricValue } from './badges';
+import { EMPTY_COLLECTION } from './collection';
+import { metricsCalculator } from './metrics';
 
 /**
  * Anti-objectifs servis (docs/ARCHITECTURE.md § 8.4) :
@@ -11,7 +15,7 @@ import { BADGE_DEFINITIONS, badgeEvaluator, conditionProgress, metricValue } fro
  * - « pas de punition » : l’évaluation est idempotente, `unlockedAt` n’est jamais
  *   remis à `null` ;
  * - « pas de récompense sans production » : toutes les conditions dérivent de
- *   productions réelles ou de la maîtrise.
+ *   productions réelles ou de la maîtrise — un QCM seul n’ouvre aucun badge.
  */
 
 const IDS_ATTENDUS = [
@@ -36,8 +40,28 @@ const IDS_ATTENDUS = [
   'couverture',
 ] as const;
 
+/** Badges dont la condition prétend mesurer une production. */
+const PRODUCTION_BADGES = [
+  'premier-pas',
+  'diner',
+  'boule-de-cristal',
+  'incendie',
+  'recitation-parfaite',
+  'mot-cle-impeccable',
+  'image-impeccable',
+  'numero-impeccable',
+  'sens-inverse',
+  'ordre-sans-faute',
+  'sans-filet',
+  'couverture',
+] as const;
+
 function fullDirection(): DirectionMetrics {
   return { attempts: 25, correct: 25, accuracy: 1, averageResponseTimeMs: 2000 };
+}
+
+function emptyDirection(): DirectionMetrics {
+  return { attempts: 0, correct: 0, accuracy: 0, averageResponseTimeMs: null };
 }
 
 function metrics(overrides: Partial<PlayerMetrics> = {}): PlayerMetrics {
@@ -48,8 +72,10 @@ function metrics(overrides: Partial<PlayerMetrics> = {}): PlayerMetrics {
     distinctQuestionsAnswered: 36,
     masteredQuestions: 36,
     masteredActs: 3,
+    masteredActIds: [1, 2, 3],
     bestStreakDays: 40,
     perfectSessions: 5,
+    bestPerfectSessionItemCount: 12,
     collectionSize: 36,
     personalHooks: 36,
     oralExamPasses: 1,
@@ -66,6 +92,8 @@ function metrics(overrides: Partial<PlayerMetrics> = {}): PlayerMetrics {
       'question-to-number': fullDirection(),
     },
     calibrationGap: 0.05,
+    calibrationAnswers: 60,
+    bestOralExam: { durationMs: 300_000, accuracy: 0.95 },
   };
   return { ...base, ...overrides };
 }
@@ -77,24 +105,28 @@ const ZERO_METRICS = metrics({
   distinctQuestionsAnswered: 0,
   masteredQuestions: 0,
   masteredActs: 0,
+  masteredActIds: [],
   bestStreakDays: 0,
   perfectSessions: 0,
+  bestPerfectSessionItemCount: 0,
   collectionSize: 0,
   personalHooks: 0,
   oralExamPasses: 0,
   eveningSessions: 0,
   morningSessions: 0,
   hintFreeAnswers: 0,
-  hintFreeAccuracy: 0,
+  hintFreeAccuracy: null,
   longestGapDays: 0,
   answersByDirection: {
-    'order-to-question': { attempts: 0, correct: 0, accuracy: 0, averageResponseTimeMs: null },
-    'keyword-to-question': { attempts: 0, correct: 0, accuracy: 0, averageResponseTimeMs: null },
-    'image-to-question': { attempts: 0, correct: 0, accuracy: 0, averageResponseTimeMs: null },
-    'number-to-question': { attempts: 0, correct: 0, accuracy: 0, averageResponseTimeMs: null },
-    'question-to-number': { attempts: 0, correct: 0, accuracy: 0, averageResponseTimeMs: null },
+    'order-to-question': emptyDirection(),
+    'keyword-to-question': emptyDirection(),
+    'image-to-question': emptyDirection(),
+    'number-to-question': emptyDirection(),
+    'question-to-number': emptyDirection(),
   },
   calibrationGap: null,
+  calibrationAnswers: 0,
+  bestOralExam: null,
 });
 
 describe('badges — catalogue', () => {
@@ -173,6 +205,58 @@ describe('badges — aucun badge impossible', () => {
   });
 });
 
+describe('badges — un QCM seul n’ouvre aucun badge de production', () => {
+  it('compose des métriques 100 % discrimination et n’en débloque aucun', () => {
+    // 60 réponses parfaites, mais toutes en discrimination : aucune production.
+    const qcm: ReviewLog[] = Array.from({ length: 60 }, (_unused, index) => ({
+      id: `qcm-${index}`,
+      sessionId: 'session-qcm',
+      questionId: (index % 36) + 1,
+      direction: DRILL_DIRECTIONS[index % DRILL_DIRECTIONS.length] as DrillDirection,
+      exerciseKind: 'discrimination',
+      grade: 'easy',
+      reviewedAt: index * DAY_MS,
+      previousDueAt: null,
+      nextDueAt: (index + 1) * DAY_MS,
+      intervalDays: 1,
+      elapsedDays: 0,
+      responseTimeMs: 1000,
+      hintsUsed: 0,
+      confidence: 5,
+    }));
+
+    const composed = metricsCalculator.compute({
+      reviewLogs: qcm,
+      sessionLogs: [],
+      mastery: [],
+      hooksCount: 0,
+      collection: EMPTY_COLLECTION,
+      streak: { current: 0, longest: 0, lastActiveDay: null, freezes: 0, frozenDays: [] },
+      oralExamPasses: 0,
+      bestOralExam: null,
+    });
+
+    // Preuve chiffrée : 0 production, 40 tentatives par direction impossibles.
+    expect(composed.totalAnswers).toBe(60);
+    expect(composed.productionAnswers).toBe(0);
+    expect(composed.hintFreeAnswers).toBe(0);
+    expect(composed.hintFreeAccuracy).toBeNull();
+
+    const states = badgeEvaluator.evaluate(BADGE_DEFINITIONS, composed, [], 1000);
+    const unlocked = states
+      .filter((state) => state.unlockedAt !== null)
+      .map((state) => state.badgeId);
+    expect(unlocked).toEqual([]);
+
+    // Contrôle ciblé : aucun badge de production n’a de progression.
+    for (const badgeId of PRODUCTION_BADGES) {
+      const state = states.find((candidate) => candidate.badgeId === badgeId);
+      expect(state?.progress, `badge ${badgeId}`).toBe(0);
+      expect(state?.unlockedAt, `badge ${badgeId}`).toBeNull();
+    }
+  });
+});
+
 describe('badges — évaluation idempotente', () => {
   it('n’écrase jamais une date d’obtention', () => {
     const first = badgeEvaluator.evaluate(BADGE_DEFINITIONS, metrics(), [], 1000);
@@ -242,46 +326,112 @@ describe('badges — progression par condition', () => {
     expect(conditionProgress(condition, weak)).toEqual({ progress: 0, target: 20 });
   });
 
-  it('mesure la maîtrise d’un acte et de tous les actes', () => {
+  it('mesure la maîtrise d’un acte par appartenance, jamais par compteur', () => {
     expect(conditionProgress({ kind: 'act-mastered', actId: 2 }, metrics())).toEqual({
-      progress: 2,
-      target: 2,
+      progress: 1,
+      target: 1,
     });
     expect(
-      conditionProgress({ kind: 'act-mastered', actId: 3 }, metrics({ masteredActs: 1 })),
-    ).toEqual({ progress: 1, target: 3 });
-    expect(conditionProgress({ kind: 'all-acts-mastered' }, metrics({ masteredActs: 2 }))).toEqual({
+      conditionProgress(
+        { kind: 'act-mastered', actId: 3 },
+        metrics({ masteredActs: 1, masteredActIds: [1] }),
+      ),
+    ).toEqual({ progress: 0, target: 1 });
+
+    // Défaut corrigé : actes I et III maîtrisés (2 actes) ne débloquent pas II.
+    const actOneAndThree = metrics({ masteredActs: 2, masteredActIds: [1, 3] });
+    expect(conditionProgress({ kind: 'act-mastered', actId: 2 }, actOneAndThree)).toEqual({
+      progress: 0,
+      target: 1,
+    });
+    expect(conditionProgress({ kind: 'act-mastered', actId: 1 }, actOneAndThree)).toEqual({
+      progress: 1,
+      target: 1,
+    });
+
+    expect(
+      conditionProgress(
+        { kind: 'all-acts-mastered' },
+        metrics({ masteredActs: 2, masteredActIds: [1, 2] }),
+      ),
+    ).toEqual({ progress: 2, target: 3 });
+    // 2 actes mais I + III : « tous les actes » n’est pas atteint.
+    expect(conditionProgress({ kind: 'all-acts-mastered' }, actOneAndThree)).toEqual({
       progress: 2,
       target: 3,
     });
   });
 
-  it('mesure les conditions sans détail disponible dans PlayerMetrics', () => {
+  it('mesure la taille réelle d’une session parfaite', () => {
     expect(conditionProgress({ kind: 'perfect-session', minItems: 12 }, metrics())).toEqual({
-      progress: 1,
-      target: 1,
+      progress: 12,
+      target: 12,
     });
+    // Une session parfaite de 5 items ne satisfait pas `minItems = 12`.
     expect(
-      conditionProgress({ kind: 'perfect-session', minItems: 12 }, metrics({ perfectSessions: 0 })),
-    ).toEqual({ progress: 0, target: 1 });
+      conditionProgress(
+        { kind: 'perfect-session', minItems: 12 },
+        metrics({ perfectSessions: 1, bestPerfectSessionItemCount: 5 }),
+      ),
+    ).toEqual({ progress: 5, target: 12 });
     expect(
-      conditionProgress({ kind: 'oral-exam', maxDurationMs: 360_000, minAccuracy: 0.9 }, metrics()),
-    ).toEqual({ progress: 1, target: 1 });
+      conditionProgress(
+        { kind: 'perfect-session', minItems: 12 },
+        metrics({ perfectSessions: 0, bestPerfectSessionItemCount: 0 }),
+      ),
+    ).toEqual({ progress: 0, target: 12 });
   });
 
-  it('mesure la calibration, y compris sans donnée', () => {
+  it('mesure la durée et la précision du Grand Oral', () => {
+    const condition: BadgeCondition = {
+      kind: 'oral-exam',
+      maxDurationMs: 360_000,
+      minAccuracy: 0.9,
+    };
+    expect(conditionProgress(condition, metrics())).toEqual({ progress: 1, target: 1 });
+    expect(
+      conditionProgress(
+        condition,
+        metrics({ bestOralExam: { durationMs: 360_000, accuracy: 0.9 } }),
+      ),
+    ).toEqual({ progress: 1, target: 1 });
+    // Trop long.
+    expect(
+      conditionProgress(condition, metrics({ bestOralExam: { durationMs: 360_001, accuracy: 1 } })),
+    ).toEqual({ progress: 0, target: 1 });
+    // Pas assez précis.
+    expect(
+      conditionProgress(
+        condition,
+        metrics({ bestOralExam: { durationMs: 200_000, accuracy: 0.89 } }),
+      ),
+    ).toEqual({ progress: 0, target: 1 });
+    // Aucun Grand Oral mesuré : le compteur de réussites ne suffit pas.
+    expect(
+      conditionProgress(condition, metrics({ oralExamPasses: 0, bestOralExam: null })),
+    ).toEqual({ progress: 0, target: 1 });
+  });
+
+  it('mesure la calibration sur un nombre réel de jugements de confiance', () => {
     expect(
       conditionProgress({ kind: 'calibration', maxGap: 0.1, minAnswers: 50 }, metrics()),
-    ).toEqual({ progress: 1, target: 1 });
+    ).toEqual({ progress: 50, target: 50 });
+    // Écart bon mais trop peu de jugements : pas de badge (ancien proxy = 1/1).
+    expect(
+      conditionProgress(
+        { kind: 'calibration', maxGap: 0.1, minAnswers: 50 },
+        metrics({ calibrationAnswers: 10 }),
+      ),
+    ).toEqual({ progress: 10, target: 50 });
     expect(
       conditionProgress({ kind: 'calibration', maxGap: 0.1, minAnswers: 50 }, ZERO_METRICS),
-    ).toEqual({ progress: 0, target: 1 });
+    ).toEqual({ progress: 0, target: 50 });
     expect(
       conditionProgress(
         { kind: 'calibration', maxGap: 0.1, minAnswers: 50 },
         metrics({ calibrationGap: 0.5 }),
       ),
-    ).toEqual({ progress: 0, target: 1 });
+    ).toEqual({ progress: 0, target: 50 });
   });
 
   it('mesure le retour après absence', () => {
@@ -298,15 +448,10 @@ describe('badges — progression par condition', () => {
     const oneDirection = metrics({
       answersByDirection: {
         'order-to-question': { attempts: 1, correct: 1, accuracy: 1, averageResponseTimeMs: 1 },
-        'keyword-to-question': {
-          attempts: 0,
-          correct: 0,
-          accuracy: 0,
-          averageResponseTimeMs: null,
-        },
-        'image-to-question': { attempts: 0, correct: 0, accuracy: 0, averageResponseTimeMs: null },
-        'number-to-question': { attempts: 0, correct: 0, accuracy: 0, averageResponseTimeMs: null },
-        'question-to-number': { attempts: 0, correct: 0, accuracy: 0, averageResponseTimeMs: null },
+        'keyword-to-question': emptyDirection(),
+        'image-to-question': emptyDirection(),
+        'number-to-question': emptyDirection(),
+        'question-to-number': emptyDirection(),
       },
     });
     expect(
@@ -320,7 +465,7 @@ describe('badges — progression par condition', () => {
     ).toEqual({ progress: 5, target: 5 });
   });
 
-  it('mesure les réponses sans indice, y compris sous le seuil de précision', () => {
+  it('mesure les réponses sans indice, y compris sans aucune donnée', () => {
     expect(
       conditionProgress({ kind: 'hint-free', minAnswers: 30, minAccuracy: 0.9 }, metrics()),
     ).toEqual({ progress: 30, target: 30 });
@@ -329,6 +474,9 @@ describe('badges — progression par condition', () => {
         { kind: 'hint-free', minAnswers: 30, minAccuracy: 0.9 },
         metrics({ hintFreeAccuracy: 0.5 }),
       ),
+    ).toEqual({ progress: 0, target: 30 });
+    expect(
+      conditionProgress({ kind: 'hint-free', minAnswers: 30, minAccuracy: 0.9 }, ZERO_METRICS),
     ).toEqual({ progress: 0, target: 30 });
   });
 });
