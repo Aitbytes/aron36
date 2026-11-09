@@ -52,12 +52,43 @@ export interface QuestionCatalog {
   readonly byKeyword: ReadonlyMap<string, QuestionItem>;
 }
 
+/**
+ * État de la relecture humaine. Un booléen `true` auto-déclaré ne prouve rien :
+ * l'état doit rester explicite et vérifiable.
+ */
+export type TranslationReviewStatus = 'pending' | 'in-progress' | 'done';
+
+/**
+ * Provenance **honnête** de la traduction française.
+ *
+ * Elle décrit ce qui a réellement été fait (méthode, source anglaise de
+ * comparaison, tests de régression) et ce qui reste à faire (relecture humaine
+ * native). Tant que `humanReview` vaut `pending`, aucun test ni écran ne peut
+ * présenter le français comme vérifié par un humain.
+ */
+export interface TranslationProvenance {
+  /** Procédé réellement appliqué pour produire et contrôler le français. */
+  readonly method: string;
+  /** Texte anglais de référence, jamais réinventé (source publiée). */
+  readonly englishSource: string;
+  /** État réel de la relecture humaine, sans auto-déclaration possible. */
+  readonly humanReview: TranslationReviewStatus;
+  /** Date ISO 8601 de la relecture humaine, `null` tant qu'elle n'a pas eu lieu. */
+  readonly reviewedAt: string | null;
+  /** Ce qui reste à faire, énoncé sans ambiguïté. */
+  readonly outstandingReview: string;
+}
+
 /** Provenance et état de validation du contenu. */
 export interface DatasetMetadata {
   /** Citation bibliographique complète (Aron et al., 1997). */
   readonly sourceCitation: string;
-  /** `true` seulement après vérification humaine contre le texte anglais original. */
-  readonly frenchTranslationVerified: boolean;
+  /**
+   * Provenance de la traduction française. Remplace l'ancien booléen
+   * `frenchTranslationVerified`, qui certifiait une vérification humaine
+   * inexistante sans qu'aucun test ne puisse le contredire.
+   */
+  readonly translationProvenance: TranslationProvenance;
   /** Version sémantique du contenu (`1.0.0`), incrémentée à chaque correction. */
   readonly contentVersion: string;
   /** Ratio de questions dont les champs `fr` sont non vides (attendu : 1). */

@@ -13,6 +13,7 @@ import {
   getQuestionByKeyword,
   getQuestionsByAct,
   normalizeKeyword,
+  significantKeywordWords,
   validateDataset,
 } from '@/domain/questions';
 import { ACT_IDS, QUESTION_COUNT, QUESTIONS_PER_ACT } from '@/domain/shared/types';
@@ -80,6 +81,32 @@ describe('dataset des 36 questions', () => {
     expect(keywordOwner.size).toBeGreaterThanOrEqual(QUESTION_COUNT);
   });
 
+  it('garantit des mots-clés sémantiquement discernables (aucun mot lexical partagé)', () => {
+    // Le test d’unicité précédent ne couvre que la collision littérale. Deux
+    // mots-clés distincts peuvent partager un même mot porteur (« qualité »,
+    // « ami »…) et envoyer un drill mot→question vers la mauvaise question.
+    const entries = QUESTION_ITEMS.flatMap((question) => [
+      { questionId: question.id, keyword: question.keyword.fr },
+      { questionId: question.id, keyword: question.keyword.en ?? '' },
+    ]).filter((entry) => entry.keyword.trim().length > 0);
+
+    const ownerByWord = new Map<string, { questionId: number; keyword: string }>();
+    const collisions: string[] = [];
+    for (const entry of entries) {
+      for (const word of significantKeywordWords(entry.keyword)) {
+        const owner = ownerByWord.get(word);
+        if (owner === undefined) {
+          ownerByWord.set(word, entry);
+        } else if (owner.questionId !== entry.questionId) {
+          collisions.push(
+            `« ${word} » partagé par Q${String(owner.questionId)} (« ${owner.keyword} ») et Q${String(entry.questionId)} (« ${entry.keyword} »)`,
+          );
+        }
+      }
+    }
+    expect(collisions).toEqual([]);
+  });
+
   it('indexe chaque question par identifiant et par mot-clé, dans les deux langues', () => {
     for (const question of QUESTION_ITEMS) {
       expect(getQuestionById(QUESTION_CATALOG, question.id)).toBe(question);
@@ -105,11 +132,18 @@ describe('dataset des 36 questions', () => {
     expect(QUESTION_CATALOG.acts.map((act) => act.film)).toEqual([...MENTAL_FILMS]);
   });
 
-  it('expose des métadonnées de provenance complètes et vérifiées', () => {
+  it('expose une provenance de traduction explicite, sans auto-déclaration', () => {
     const { metadata } = QUESTION_DATASET;
     expect(metadata.sourceCitation).toContain('Aron');
     expect(metadata.sourceCitation).toContain('1997');
-    expect(metadata.frenchTranslationVerified).toBe(true);
+    const provenance = metadata.translationProvenance;
+    // La provenance décrit la méthode réellement suivie…
+    expect(provenance.method.trim().length).toBeGreaterThan(0);
+    expect(provenance.englishSource).toBe(metadata.sourceCitation);
+    // …et dit la vérité sur l’état humain, qu’aucun booléen ne peut certifier.
+    expect(provenance.humanReview).toBe('pending');
+    expect(provenance.reviewedAt).toBeNull();
+    expect(provenance.outstandingReview.trim().length).toBeGreaterThan(0);
     expect(metadata.contentVersion).toMatch(/^\d+\.\d+\.\d+$/u);
     expect(metadata.frenchCompleteness).toBe(1);
   });

@@ -68,28 +68,28 @@ const ACT_I_SCENES: readonly SceneSeed[] = [
       en: 'A whole day in fast-forward, from sunrise to sunset, everything golden.',
     },
     transitionToNext: {
-      fr: 'Le soleil se couche ; quelqu’un entonne une chanson.',
-      en: 'The sun sets; someone starts to sing.',
+      fr: 'Le soleil se couche ; tu entonnes une chanson pour toi.',
+      en: 'The sun sets; you hum a song to yourself.',
     },
   },
   {
     image: {
-      fr: 'Des convives qui chantent en chœur, un micro imaginaire passe de main en main.',
-      en: 'Guests singing in chorus, an imaginary microphone passed hand to hand.',
+      fr: 'Tu chantes d’abord pour toi seul·e, puis tu te tournes et chantes pour la personne d’en face.',
+      en: 'You sing first to yourself alone, then turn and sing to the person opposite.',
     },
     transitionToNext: {
-      fr: 'Le chœur s’arrête net : le temps saute de soixante ans.',
-      en: 'The chorus stops short: time leaps forward sixty years.',
+      fr: 'Ta chanson s’arrête net : le temps saute de soixante ans.',
+      en: 'Your song stops short: time leaps forward sixty years.',
     },
   },
   {
     image: {
-      fr: 'Une personne de 90 ans se redresse, un corps de 30 ans apparaît dessous.',
-      en: 'A 90-year-old straightens up, a 30-year-old body appears beneath.',
+      fr: 'Deux vieillards côte à côte : l’un a la tête d’un trentenaire, l’autre le corps d’un trentenaire.',
+      en: 'Two old people side by side: one has a thirty-year-old’s mind, the other a thirty-year-old’s body.',
     },
     transitionToNext: {
-      fr: 'Elle se penche et te chuchote à l’oreille comment tu vas mourir.',
-      en: 'They lean in and whisper in your ear how you will die.',
+      fr: 'L’un des vieillards se penche et te chuchote comment tu vas mourir.',
+      en: 'One of them leans in and whispers how you will die.',
     },
   },
   {
@@ -98,8 +98,8 @@ const ACT_I_SCENES: readonly SceneSeed[] = [
       en: 'A cold breath at your ear, a shiver runs down your spine.',
     },
     transitionToNext: {
-      fr: 'Le frisson te rapproche de ton voisin : trois fils rouges apparaissent.',
-      en: 'The shiver pulls you closer to your neighbour: three red threads appear.',
+      fr: 'Le frisson remonte ta gorge ; ton souffle gèle et se divise en trois fils rouges tendus vers ton voisin.',
+      en: 'The shiver rises to your throat; your breath freezes and splits into three red threads stretched toward your neighbour.',
     },
   },
   {
@@ -108,18 +108,18 @@ const ACT_I_SCENES: readonly SceneSeed[] = [
       en: 'Three red threads link your chest to the one opposite.',
     },
     transitionToNext: {
-      fr: 'Les fils vibrent : tout le monde se lève pour te remercier.',
-      en: 'The threads vibrate: everyone rises to thank you.',
+      fr: 'Les fils vibrent : un merci monte en toi et te met debout.',
+      en: 'The threads vibrate: a thank-you rises in you and pulls you to your feet.',
     },
   },
   {
     image: {
-      fr: 'La table entière debout, des mains tendues vers toi, tes yeux se remplissent.',
-      en: 'The whole table standing, hands reaching out to you, your eyes filling.',
+      fr: 'Debout, tu remercies la table entière ; chaque visage s’illumine.',
+      en: 'On your feet, you thank the whole table; every face lights up.',
     },
     transitionToNext: {
-      fr: 'Tes parents surgissent et déroulent ton éducation à l’envers.',
-      en: 'Your parents appear and rewind your upbringing.',
+      fr: 'Deux visages plus vieux s’approchent : tes parents.',
+      en: 'Two older faces come closer: your parents.',
     },
   },
   {
@@ -128,8 +128,8 @@ const ACT_I_SCENES: readonly SceneSeed[] = [
       en: 'Your parents rewind your childhood like an old cassette.',
     },
     transitionToNext: {
-      fr: 'La cassette se casse : un sablier de quatre minutes se retourne.',
-      en: 'The cassette snaps: a four-minute hourglass turns over.',
+      fr: 'La cassette se casse et libère un sablier de quatre minutes.',
+      en: 'The cassette snaps and releases a four-minute hourglass.',
     },
   },
   {
@@ -178,8 +178,8 @@ const ACT_II_SCENES: readonly SceneSeed[] = [
       en: 'A golden trophy spins in the ball, engraved with your name.',
     },
     transitionToNext: {
-      fr: 'Le trophée éclate : deux amis s’y serrent dans les bras.',
-      en: 'The trophy bursts: two friends embrace inside it.',
+      fr: 'Dans le reflet doré du trophée, deux amis s’étreignent.',
+      en: 'In the trophy’s golden reflection, two friends embrace.',
     },
   },
   {
@@ -238,24 +238,24 @@ const ACT_II_SCENES: readonly SceneSeed[] = [
       en: 'Hearts beat inside the ball and answer each other.',
     },
     transitionToNext: {
-      fr: 'Les cœurs se posent sur cinq doigts levés.',
-      en: 'The hearts land on five raised fingers.',
+      fr: 'Un cœur se divise en cinq étincelles qui se posent au bout de cinq doigts levés.',
+      en: 'One heart splits into five sparks that land on the tips of five raised fingers.',
     },
   },
   {
     image: {
-      fr: 'Cinq doigts levés, chacun porte une qualité écrite.',
-      en: 'Five raised fingers, each carrying a written quality.',
+      fr: 'Une main levée, cinq qualités écrites au bout de chaque doigt.',
+      en: 'A raised hand, five qualities written at the tip of each finger.',
     },
     transitionToNext: {
-      fr: 'Les cinq doigts se referment autour d’un feu de cheminée.',
-      en: 'The five fingers close around a fireplace.',
+      fr: 'Les cinq doigts se rassemblent en un foyer où s’allume un feu de cheminée.',
+      en: 'The five fingers gather into a hearth where a fireplace fire lights up.',
     },
   },
   {
     image: {
-      fr: 'Toute ta famille serrée autour d’un feu chaleureux.',
-      en: 'Your whole family gathered around a warm fire.',
+      fr: 'Toute ta famille serrée autour de ce feu chaleureux, chaque visage éclairé.',
+      en: 'Your whole family gathered around that warm fire, every face lit.',
     },
     transitionToNext: {
       fr: 'Du feu se détache une silhouette : ta mère.',
@@ -274,22 +274,22 @@ const ACT_II_SCENES: readonly SceneSeed[] = [
 const ACT_III_SCENES: readonly SceneSeed[] = [
   {
     image: {
-      fr: 'Deux silhouettes face aux flammes disent ensemble : « NOUS… ».',
-      en: 'Two silhouettes facing the flames say together: “WE…”',
+      fr: 'Deux silhouettes assises face à face dans la lumière douce du soir disent ensemble : « NOUS… ».',
+      en: 'Two silhouettes sitting face to face in the soft evening light say together: “WE…”',
     },
     transitionToNext: {
-      fr: 'Le mot NOUS se détache et roule comme une braise.',
-      en: 'The word WE detaches and rolls like an ember.',
+      fr: 'Le mot NOUS s’inscrit sur la nappe, puis se dissout en une phrase à trous.',
+      en: 'The word WE writes itself on the tablecloth, then dissolves into a sentence with a blank.',
     },
   },
   {
     image: {
-      fr: 'Une braise dessine une phrase à compléter : « … avec qui partager ».',
-      en: 'An ember draws a sentence to complete: “… with whom to share”.',
+      fr: 'Sur la nappe, une phrase à compléter : « … avec qui partager ».',
+      en: 'On the tablecloth, a sentence to complete: “… with whom to share”.',
     },
     transitionToNext: {
-      fr: 'La phrase devient une clé qu’on te tend.',
-      en: 'The sentence becomes a key handed to you.',
+      fr: 'La phrase se plie et devient une clé lourde qu’on te tend.',
+      en: 'The sentence folds and becomes a heavy key handed to you.',
     },
   },
   {
@@ -298,8 +298,8 @@ const ACT_III_SCENES: readonly SceneSeed[] = [
       en: 'A heavy key is handed to you: what the other must know about you.',
     },
     transitionToNext: {
-      fr: 'La clé ouvre une porte, une vérité brute en sort.',
-      en: 'The key opens a door, a raw truth comes out.',
+      fr: 'La clé ouvre une porte ; derrière, des mots jamais dits.',
+      en: 'The key opens a door; behind it, words never said.',
     },
   },
   {
@@ -308,38 +308,38 @@ const ACT_III_SCENES: readonly SceneSeed[] = [
       en: 'A door opens onto words never said to a stranger.',
     },
     transitionToNext: {
-      fr: 'Un souvenir gênant rejoue en boucle, en rouge.',
-      en: 'An embarrassing memory replays on a loop, in red.',
+      fr: 'L’un de ces mots tombe et rejoue en boucle, en rouge.',
+      en: 'One of those words falls and replays on a loop, in red.',
     },
   },
   {
     image: {
-      fr: 'Un moment gênant rejoue en boucle, tes joues rougissent.',
+      fr: 'Un moment gênant rejoue en boucle ; tes joues rougissent.',
       en: 'An embarrassing moment replays on a loop, your cheeks flush.',
     },
     transitionToNext: {
-      fr: 'Tes larmes éteignent la boucle.',
-      en: 'Your tears put out the loop.',
+      fr: 'La boucle se brise ; des larmes montent.',
+      en: 'The loop breaks; tears rise.',
     },
   },
   {
     image: {
-      fr: 'Des larmes tombent, d’abord devant un visage, puis devant le vide.',
-      en: 'Tears fall, first in front of a face, then in front of nothing.',
+      fr: 'Des larmes tombent, d’abord devant un visage, puis dans la solitude.',
+      en: 'Tears fall, first in front of a face, then in solitude.',
     },
     transitionToNext: {
-      fr: 'Les larmes laissent une trace brillante : ce que tu aimes déjà.',
-      en: 'The tears leave a shining trail: what you already like.',
+      fr: 'Les larmes laissent une trace brillante sur ta joue.',
+      en: 'The tears leave a shining trail on your cheek.',
     },
   },
   {
     image: {
-      fr: 'Une trace lumineuse dessine ce que tu apprécies déjà chez l’autre.',
-      en: 'A glowing trail draws what you already appreciate in the other.',
+      fr: 'La trace brillante dessine ce que tu apprécies déjà chez l’autre.',
+      en: 'The glowing trail draws what you already appreciate in the other.',
     },
     transitionToNext: {
-      fr: 'La trace mène à un clown, puis à un panneau STOP.',
-      en: 'The trail leads to a clown, then to a STOP sign.',
+      fr: 'La trace mène à un clown qui se fige devant un panneau STOP.',
+      en: 'The trail leads to a clown who freezes before a STOP sign.',
     },
   },
   {
@@ -348,8 +348,8 @@ const ACT_III_SCENES: readonly SceneSeed[] = [
       en: 'A clown steps forward; a hand rises: “too serious”.',
     },
     transitionToNext: {
-      fr: 'Le STOP devient minuit, dernière occasion de parler.',
-      en: 'The STOP becomes midnight, the last chance to speak.',
+      fr: 'Le panneau STOP se change en horloge : minuit approche.',
+      en: 'The STOP sign turns into a clock: midnight is near.',
     },
   },
   {
@@ -358,8 +358,8 @@ const ACT_III_SCENES: readonly SceneSeed[] = [
       en: 'A clock strikes midnight; a sentence stays stuck in your throat.',
     },
     transitionToNext: {
-      fr: 'Minuit met le feu à la maison.',
-      en: 'Midnight sets the house on fire.',
+      fr: 'Minuit met le feu au rideau : la maison s’embrase.',
+      en: 'Midnight sets the curtain alight: the house goes up in flames.',
     },
   },
   {

@@ -2,7 +2,7 @@ import { filmForAct } from '@/domain/memory/films';
 import type { ActId, LocalizedText, Ratio } from '@/domain/shared/types';
 import { QUESTIONS_PER_ACT } from '@/domain/shared/types';
 
-import type { DatasetMetadata, QuestionItem } from './types';
+import type { DatasetMetadata, QuestionItem, TranslationProvenance } from './types';
 
 /**
  * Dataset des 36 questions d’Aron et al. (1997), en trois actes de 12.
@@ -17,6 +17,11 @@ import type { DatasetMetadata, QuestionItem } from './types';
  * films (`memory/films.ts`) et sont projetées dans `QuestionItem.mentalImage`
  * par `toItems`. La « référence à la scène » d’une question est son couple
  * (`actId`, `positionInAct`), qui coïncide toujours avec `FilmScene.order`.
+ *
+ * **Convention de genre (tout le jeu)** : pour la personne qui répond, on
+ * emploie l’épicène au point médian (`élevé·e`, `seul·e`) ; pour le ou la
+ * partenaire, on écrit `il ou elle`. Aucune question n’accorde donc au masculin
+ * par défaut.
  */
 
 /** Citation bibliographique de la source du protocole. */
@@ -26,14 +31,32 @@ export const SOURCE_CITATION =
   'Preliminary Findings. Personality and Social Psychology Bulletin, 23(4), 363–377.';
 
 /** Version sémantique du contenu : incrémentée à chaque correction éditoriale. */
-export const CONTENT_VERSION = '1.0.0';
+export const CONTENT_VERSION = '1.1.0';
 
 /**
- * `true` : la traduction française a été vérifiée ligne à ligne contre le texte
- * anglais publié pendant la Phase 2. Un contresens restant doit faire retomber
- * ce drapeau à `false` et incrémenter `CONTENT_VERSION`.
+ * Provenance de la traduction française, **sans auto-déclaration**.
+ *
+ * Ce que ce témoignage affirme, exactement :
+ * - une revue éditoriale outillée a été menée en Phase 2 (traduction assistée,
+ *   confrontation mot à mot au texte anglais publié, réécriture idiomatique) ;
+ * - les 36 libellés français sont figés par un test de régression
+ *   (`questions/translation.test.ts`) : toute modification devient un
+ *   changement explicite et assumé ;
+ * - la relecture humaine par un locuteur natif **n’a pas encore eu lieu**
+ *   (`humanReview: 'pending'`, `reviewedAt: null`).
+ *
+ * Aucun consommateur ne peut donc présenter le français comme vérifié par un
+ * humain : il lit un statut, pas un booléen complaisant.
  */
-export const FRENCH_TRANSLATION_VERIFIED = true;
+export const TRANSLATION_PROVENANCE: TranslationProvenance = {
+  method:
+    'Revue éditoriale outillée : traduction assistée, contrôle de fidélité mot à mot contre l’anglais publié, réécriture idiomatique, puis figement des 36 libellés par un test de régression.',
+  englishSource: SOURCE_CITATION,
+  humanReview: 'pending',
+  reviewedAt: null,
+  outstandingReview:
+    'Relecture par un locuteur natif du français (fidélité et registre) avant toute revendication de conformité en production.',
+};
 
 /** Contenu éditorial d’un acte, hors film (le film vient de `memory/films.ts`). */
 export interface ActContent {
@@ -103,7 +126,7 @@ const ACT_I_SEEDS: readonly QuestionSeed[] = [
   {
     keyword: { fr: 'Chanson', en: 'Singing' },
     prompt: {
-      fr: 'Quand as-tu chanté pour toi-même pour la dernière fois ? Et pour quelqu’un d’autre ?',
+      fr: 'À quand remonte la dernière fois que tu as chanté pour toi-même ? Et pour quelqu’un d’autre ?',
       en: 'When did you last sing to yourself? To someone else?',
     },
     themeTags: ['expression', 'musique'],
@@ -135,15 +158,15 @@ const ACT_I_SEEDS: readonly QuestionSeed[] = [
   {
     keyword: { fr: 'Gratitude', en: 'Gratitude' },
     prompt: {
-      fr: 'Pour quoi, dans ta vie, éprouves-tu le plus de gratitude ?',
+      fr: 'Qu’est-ce qui, dans ta vie, t’inspire le plus de gratitude ?',
       en: 'For what in your life do you feel most grateful?',
     },
     themeTags: ['gratitude', 'bonheur'],
   },
   {
-    keyword: { fr: 'Éducation', en: 'Upbringing' },
+    keyword: { fr: 'Éducation familiale', en: 'Upbringing' },
     prompt: {
-      fr: 'Si tu pouvais changer quelque chose à ton éducation, que changerais-tu ?',
+      fr: 'Si tu pouvais changer quelque chose à la façon dont tu as été élevé·e, que changerais-tu ?',
       en: 'If you could change anything about the way you were raised, what would it be?',
     },
     themeTags: ['enfance', 'famille'],
@@ -192,7 +215,7 @@ const ACT_II_SEEDS: readonly QuestionSeed[] = [
     themeTags: ['réussite', 'fierté'],
   },
   {
-    keyword: { fr: 'Qualités d’un ami', en: 'What a friend brings' },
+    keyword: { fr: 'Amitié', en: 'Friendship' },
     prompt: {
       fr: 'Qu’est-ce que tu apprécies le plus dans une amitié ?',
       en: 'What do you value most in a friendship?',
@@ -200,7 +223,7 @@ const ACT_II_SEEDS: readonly QuestionSeed[] = [
     themeTags: ['amitié', 'valeurs'],
   },
   {
-    keyword: { fr: 'Souvenir précieux', en: 'Treasured memory' },
+    keyword: { fr: 'Précieux', en: 'Treasured' },
     prompt: {
       fr: 'Quel souvenir t’est le plus précieux ?',
       en: 'What is your most treasured memory?',
@@ -208,7 +231,7 @@ const ACT_II_SEEDS: readonly QuestionSeed[] = [
     themeTags: ['mémoire', 'bonheur'],
   },
   {
-    keyword: { fr: 'Pire souvenir', en: 'Worst memory' },
+    keyword: { fr: 'Terrible', en: 'Worst' },
     prompt: {
       fr: 'Quel est ton souvenir le plus terrible ?',
       en: 'What is your most terrible memory?',
@@ -218,13 +241,13 @@ const ACT_II_SEEDS: readonly QuestionSeed[] = [
   {
     keyword: { fr: 'Mourir dans un an', en: 'One year to live' },
     prompt: {
-      fr: 'Si tu apprenais que tu vas mourir subitement dans un an, changerais-tu quelque chose à ta façon de vivre aujourd’hui ? Pourquoi ?',
+      fr: 'Si tu apprenais que tu mourrais subitement dans un an, changerais-tu quelque chose à ta façon de vivre aujourd’hui ? Pourquoi ?',
       en: 'If you knew that in one year you would die suddenly, would you change anything about the way you are now living? Why?',
     },
     themeTags: ['mort', 'priorités'],
   },
   {
-    keyword: { fr: 'Sens de l’amitié', en: 'Meaning of friendship' },
+    keyword: { fr: 'Signification', en: 'Meaning' },
     prompt: {
       fr: 'Que signifie l’amitié pour toi ?',
       en: 'What does friendship mean to you?',
@@ -240,7 +263,7 @@ const ACT_II_SEEDS: readonly QuestionSeed[] = [
     themeTags: ['amour', 'affection'],
   },
   {
-    keyword: { fr: 'Cinq qualités', en: 'Five qualities' },
+    keyword: { fr: 'Qualités du partenaire', en: 'Partner’s qualities' },
     prompt: {
       fr: 'En alternance, partagez chacun une qualité que vous appréciez chez l’autre — cinq éléments en tout.',
       en: 'Alternate sharing something you consider a positive characteristic of your partner. Share a total of five items.',
@@ -285,7 +308,7 @@ const ACT_III_SEEDS: readonly QuestionSeed[] = [
   {
     keyword: { fr: 'À savoir', en: 'What to know' },
     prompt: {
-      fr: 'Si tu allais devenir un proche de ton partenaire, dis-lui ce qu’il serait important qu’il ou elle sache sur toi.',
+      fr: 'Si tu allais devenir un ami proche de ton partenaire, dis-lui ce qu’il serait important qu’il ou elle sache sur toi.',
       en: 'If you were going to become a close friend with your partner, please share what would be important for him or her to know.',
     },
     themeTags: ['confiance', 'identité'],
@@ -309,7 +332,7 @@ const ACT_III_SEEDS: readonly QuestionSeed[] = [
   {
     keyword: { fr: 'Pleurs', en: 'Crying' },
     prompt: {
-      fr: 'Quand as-tu pleuré pour la dernière fois devant quelqu’un ? Et seul, sans personne ?',
+      fr: 'Quand as-tu pleuré pour la dernière fois devant quelqu’un ? Et quand tu étais seul·e ?',
       en: 'When did you last cry in front of another person? By yourself?',
     },
     themeTags: ['émotions', 'vulnérabilité'],
@@ -325,7 +348,7 @@ const ACT_III_SEEDS: readonly QuestionSeed[] = [
   {
     keyword: { fr: 'Blague', en: 'Joking' },
     prompt: {
-      fr: 'Y a-t-il des sujets trop sérieux pour qu’on en plaisante ?',
+      fr: 'Y a-t-il, si tant est qu’il y en ait, des sujets trop sérieux pour qu’on en plaisante ?',
       en: 'What, if anything, is too serious to be joked about?',
     },
     themeTags: ['humour', 'limites'],
@@ -412,7 +435,7 @@ export function buildDatasetMetadata(questions: readonly QuestionItem[]): Datase
   const frenchCompleteness: Ratio = total === 0 ? 0 : filled / total;
   return {
     sourceCitation: SOURCE_CITATION,
-    frenchTranslationVerified: FRENCH_TRANSLATION_VERIFIED,
+    translationProvenance: TRANSLATION_PROVENANCE,
     contentVersion: CONTENT_VERSION,
     frenchCompleteness,
   };
