@@ -20,7 +20,9 @@
     "lint:fix": "eslint . --fix",
     "typecheck": "tsc --noEmit",
     "format": "prettier --write .",
-    "format:check": "prettier --check ."
+    "format:check": "prettier --check .",
+    "traceability": "node scripts/traceability.mjs",
+    "traceability:check": "node scripts/traceability.mjs --check"
   },
   "dependencies": {
     "react": "^19.3.1",
