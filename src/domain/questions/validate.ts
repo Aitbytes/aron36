@@ -34,6 +34,7 @@ export type DatasetIssueCode =
   | 'empty-french'
   | 'empty-english'
   | 'duplicate-keyword'
+  | 'keyword-collision'
   | 'film-count'
   | 'film-missing'
   | 'film-scene-count'
@@ -69,6 +70,139 @@ function isNonEmpty(text: string | undefined): text is string {
   return text !== undefined && text.trim().length > 0;
 }
 
+/**
+ * Mots vides ignorés lors de la mesure de discriminabilité : ils n’orientent
+ * aucune question (articles, prépositions, pronoms, auxiliaires).
+ */
+const KEYWORD_STOPWORDS: ReadonlySet<string> = new Set([
+  // Français
+  'le',
+  'la',
+  'les',
+  'un',
+  'une',
+  'des',
+  'du',
+  'de',
+  'et',
+  'ou',
+  'au',
+  'aux',
+  'en',
+  'dans',
+  'sur',
+  'pour',
+  'par',
+  'avec',
+  'sans',
+  'vers',
+  'se',
+  'sa',
+  'son',
+  'ses',
+  'ce',
+  'cet',
+  'cette',
+  'ces',
+  'mon',
+  'ma',
+  'mes',
+  'ton',
+  'ta',
+  'tes',
+  'notre',
+  'nos',
+  'votre',
+  'vos',
+  'leur',
+  'leurs',
+  'il',
+  'elle',
+  'ils',
+  'elles',
+  'je',
+  'tu',
+  'on',
+  'nous',
+  'vous',
+  'me',
+  'te',
+  'lui',
+  'que',
+  'qui',
+  'quoi',
+  'dont',
+  'ne',
+  'pas',
+  'plus',
+  'an',
+  'ans',
+  // Anglais
+  'the',
+  'of',
+  'to',
+  'in',
+  'on',
+  'and',
+  'or',
+  'for',
+  'with',
+  'your',
+  'you',
+  'an',
+  'as',
+  'at',
+  'by',
+  'is',
+  'it',
+  'its',
+  'that',
+  'this',
+  'be',
+  'are',
+  'was',
+  'were',
+  'my',
+  'our',
+  'their',
+  'they',
+  'we',
+  'he',
+  'she',
+  'his',
+  'her',
+  'from',
+  'but',
+  'not',
+  'no',
+  'so',
+  'any',
+  'one',
+]);
+
+/**
+ * Mots lexicaux d’un mot-clé, normalisés : ceux qui portent réellement
+ * l’accroche. Deux mots-clés qui en partagent un sont jugés indiscernables en
+ * drill mot→question.
+ *
+ * `normalizeKeyword` retire la casse et les diacritiques ; on découpe ensuite
+ * sur tout ce qui n’est pas une lettre ou un chiffre (apostrophes, tirets,
+ * point médian), on écarte les nombres purs, les mots vides et les fragments de
+ * moins de trois lettres.
+ */
+export function significantKeywordWords(keyword: string): readonly string[] {
+  const words = normalizeKeyword(keyword)
+    .split(/[^a-z0-9]+/u)
+    .filter((word) => word.length >= 3 && !/^\d+$/u.test(word) && !KEYWORD_STOPWORDS.has(word));
+  return [...new Set(words)];
+}
+
+/** Mots significatifs partagés par deux mots-clés (ensemble vide si aucun). */
+function sharedSignificantWords(left: string, right: string): readonly string[] {
+  const rightWords = new Set(significantKeywordWords(right));
+  return significantKeywordWords(left).filter((word) => rightWords.has(word));
+}
+
 /** Vérifie les trois champs français et anglais d’un `LocalizedText`. */
 function checkLocalizedText(
   issues: DatasetIssue[],
@@ -102,6 +236,7 @@ function checkQuestions(
   const seenIds = new Set<number>();
   const seenKeywords = new Map<string, number>();
   const perActCount = new Map<ActId, number>();
+  const keywordsByQuestion: { questionId: number; keyword: string }[] = [];
 
   for (const question of questions) {
     const { id, order, actId, positionInAct } = question;
@@ -180,6 +315,28 @@ function checkQuestions(
         });
       } else {
         seenKeywords.set(key, id);
+      }
+      keywordsByQuestion.push({ questionId: id, keyword });
+    }
+  }
+
+  // Discriminabilité sémantique : deux mots-clés de questions différentes ne
+  // doivent partager aucun mot lexical significatif (« qualité », « ami »…),
+  // sans quoi un drill mot→question peut mener à la mauvaise question.
+  for (let left = 0; left < keywordsByQuestion.length; left += 1) {
+    for (let right = left + 1; right < keywordsByQuestion.length; right += 1) {
+      const first = keywordsByQuestion[left];
+      const second = keywordsByQuestion[right];
+      if (first === undefined || second === undefined) continue;
+      if (first.questionId === second.questionId) continue;
+      const shared = sharedSignificantWords(first.keyword, second.keyword);
+      if (shared.length > 0) {
+        issues.push({
+          code: 'keyword-collision',
+          message: `Mots-clés indiscernables : « ${first.keyword} » (Q${String(first.questionId)}) et « ${second.keyword} » (Q${String(second.questionId)}) partagent « ${shared.join(' », « ')} ».`,
+          questionId: second.questionId,
+          field: 'keyword',
+        });
       }
     }
   }

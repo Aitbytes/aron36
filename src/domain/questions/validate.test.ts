@@ -40,7 +40,8 @@ describe('validateur du dataset', () => {
     expect(result).toMatchObject({ ok: true });
     if (result.ok) {
       expect(result.metadata.frenchCompleteness).toBe(1);
-      expect(result.metadata.frenchTranslationVerified).toBe(true);
+      expect(result.metadata.translationProvenance.humanReview).toBe('pending');
+      expect(result.metadata.translationProvenance.reviewedAt).toBeNull();
     }
   });
 
@@ -112,6 +113,19 @@ describe('validateur du dataset', () => {
       keyword: { ...second.keyword, fr: FIRST_QUESTION.keyword.fr },
     });
     expect(codes(withQuestions(duplicate))).toContain('duplicate-keyword');
+  });
+
+  it('rejette deux mots-clés qui partagent un mot lexical significatif', () => {
+    // Mots-clés littéralement différents, mais un même mot porteur : un drill
+    // mot→question ne peut plus trancher entre les deux questions.
+    const second = QUESTION_ITEMS[1];
+    if (second === undefined) throw new Error('dataset incomplet');
+    const colliding = patchQuestion(1, {
+      keyword: { ...second.keyword, fr: 'Journée sans fin' },
+    });
+    const collisionCodes = codes(withQuestions(colliding));
+    expect(collisionCodes).toContain('keyword-collision');
+    expect(collisionCodes).not.toContain('duplicate-keyword');
   });
 
   it('rejette un film manquant ou en double', () => {
