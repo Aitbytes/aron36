@@ -159,17 +159,115 @@ describe('MasteryEvaluator — seuils SRS de la carte', () => {
     expect(questionOf(snapshot, 1).cardMastered).toBe(false);
   });
 
-  it('refuse une carte sous minConsecutiveSuccesses', () => {
+  it('ignore le compteur de l’ordonnanceur : c’est la série de qualité qui compte', () => {
+    // Le compteur `consecutiveSuccesses` compte `CORRECT_GRADES` (hard inclus)
+    // et peut donc être élevé sans qu'aucune réussite de qualité n'ait eu lieu.
     const input: MasteryInput = {
-      cards: [
-        makeCard(1, { consecutiveSuccesses: DEFAULT_MASTERY_CRITERIA.minConsecutiveSuccesses - 1 }),
+      cards: [makeCard(1, { consecutiveSuccesses: 8 })],
+      reviewLogs: [
+        makeLog(1, DRILL_DIRECTIONS[0], 'hard'),
+        makeLog(1, DRILL_DIRECTIONS[0], 'hard'),
       ],
-      reviewLogs: qualityLogs(1, DRILL_DIRECTIONS.slice(0, 3)),
       questionsPerAct: QUESTIONS_PER_ACT,
       now: T0,
     };
     const snapshot = masteryEvaluator.evaluate(input, DEFAULT_MASTERY_CRITERIA);
     expect(questionOf(snapshot, 1).cardMastered).toBe(false);
+  });
+
+  it('refuse une carte dont la série de qualité est trop courte', () => {
+    const direction = DRILL_DIRECTIONS[0];
+    const logs = [
+      makeLog(1, direction, 'good', { reviewedAt: T0 - 3 * DAY_MS }),
+      makeLog(1, direction, 'good', { reviewedAt: T0 - 2 * DAY_MS }),
+      makeLog(1, direction, 'hard', { reviewedAt: T0 - DAY_MS }),
+    ];
+    const input: MasteryInput = {
+      cards: [makeCard(1, { consecutiveSuccesses: 3 })],
+      reviewLogs: logs,
+      questionsPerAct: QUESTIONS_PER_ACT,
+      now: T0,
+    };
+    const snapshot = masteryEvaluator.evaluate(input, DEFAULT_MASTERY_CRITERIA);
+    expect(questionOf(snapshot, 1).cardMastered).toBe(false);
+  });
+
+  it('un hard seul ne suffit jamais à la maîtrise', () => {
+    const direction = DRILL_DIRECTIONS[0];
+    const input: MasteryInput = {
+      cards: [makeCard(1, { consecutiveSuccesses: 5 })],
+      reviewLogs: [makeLog(1, direction, 'hard'), makeLog(1, direction, 'hard')],
+      questionsPerAct: QUESTIONS_PER_ACT,
+      now: T0,
+    };
+    const question = questionOf(masteryEvaluator.evaluate(input, DEFAULT_MASTERY_CRITERIA), 1);
+    expect(question.cardMastered).toBe(false);
+    expect(question.mastered).toBe(false);
+  });
+
+  it('8 good puis 2 hard : la maîtrise retombe', () => {
+    const direction = DRILL_DIRECTIONS[0];
+    const logs: ReviewLog[] = [];
+    for (let index = 0; index < 8; index += 1) {
+      logs.push(makeLog(1, direction, 'good', { reviewedAt: T0 - (10 - index) * DAY_MS }));
+    }
+    const beforeLapse: MasteryInput = {
+      cards: [makeCard(1)],
+      reviewLogs: logs,
+      questionsPerAct: QUESTIONS_PER_ACT,
+      now: T0,
+    };
+    expect(
+      questionOf(masteryEvaluator.evaluate(beforeLapse, DEFAULT_MASTERY_CRITERIA), 1).cardMastered,
+    ).toBe(true);
+
+    // Deux `hard` plus récents interrompent la série de qualité.
+    const afterHards: MasteryInput = {
+      cards: [makeCard(1, { consecutiveSuccesses: 10 })],
+      reviewLogs: [
+        ...logs,
+        makeLog(1, direction, 'hard', { reviewedAt: T0 - DAY_MS }),
+        makeLog(1, direction, 'hard', { reviewedAt: T0 }),
+      ],
+      questionsPerAct: QUESTIONS_PER_ACT,
+      now: T0,
+    };
+    expect(
+      questionOf(masteryEvaluator.evaluate(afterHards, DEFAULT_MASTERY_CRITERIA), 1).cardMastered,
+    ).toBe(false);
+  });
+
+  it('lit les journaux dans l’ordre chronologique, pas dans l’ordre d’entrée', () => {
+    const direction = DRILL_DIRECTIONS[0];
+    const input: MasteryInput = {
+      cards: [makeCard(1)],
+      // `hard` en premier dans le tableau mais `good` plus récents : la série vaut 2.
+      reviewLogs: [
+        makeLog(1, direction, 'hard', { reviewedAt: T0 }),
+        makeLog(1, direction, 'good', { reviewedAt: T0 - 2 * DAY_MS }),
+        makeLog(1, direction, 'good', { reviewedAt: T0 - DAY_MS }),
+      ],
+      questionsPerAct: QUESTIONS_PER_ACT,
+      now: T0,
+    };
+    // Ici le `hard` est le plus récent : la série est nulle.
+    expect(
+      questionOf(masteryEvaluator.evaluate(input, DEFAULT_MASTERY_CRITERIA), 1).cardMastered,
+    ).toBe(false);
+
+    const chronological: MasteryInput = {
+      ...input,
+      reviewLogs: [
+        makeLog(1, direction, 'hard', { reviewedAt: T0 - 4 * DAY_MS }),
+        makeLog(1, direction, 'good', { reviewedAt: T0 - 3 * DAY_MS }),
+        makeLog(1, direction, 'good', { reviewedAt: T0 - 2 * DAY_MS }),
+        makeLog(1, direction, 'good', { reviewedAt: T0 - DAY_MS }),
+      ],
+    };
+    expect(
+      questionOf(masteryEvaluator.evaluate(chronological, DEFAULT_MASTERY_CRITERIA), 1)
+        .cardMastered,
+    ).toBe(true);
   });
 
   it('exige minReps révisions de qualité (good/easy)', () => {
@@ -250,10 +348,12 @@ describe('MasteryEvaluator — couverture des directions', () => {
   it('refuse la maîtrise sous minDistinctDirections', () => {
     const [first, second, third] = DRILL_DIRECTIONS;
     const logs = [
+      // `hard` anciens : ils ne doivent pas interrompre la série de qualité
+      // récente (ce test porte sur la couverture des directions).
+      makeLog(1, third, 'hard', { reviewedAt: T0 - 3 * DAY_MS }),
+      makeLog(1, third, 'hard', { reviewedAt: T0 - 2 * DAY_MS }),
       ...qualityLogs(1, [first]),
       ...qualityLogs(1, [second]),
-      makeLog(1, third, 'hard'),
-      makeLog(1, third, 'hard'),
     ];
     const input: MasteryInput = {
       cards: [makeCard(1)],
@@ -354,6 +454,7 @@ describe('MasteryEvaluator — critères personnalisés', () => {
       ...DEFAULT_MASTERY_CRITERIA,
       minIntervalDays: 1,
       minReps: 1,
+      minConsecutiveSuccesses: 1,
       minDistinctDirections: 1,
       minDirectionAttempts: 1,
       actUnlockRatio: 0.5,

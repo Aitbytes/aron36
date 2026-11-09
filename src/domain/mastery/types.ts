@@ -9,13 +9,27 @@ import type { CardState, ReviewLog } from '@/domain/srs/types';
  * le seuil de maîtrise de l'acte précédent.
  */
 
-/** Critères de maîtrise, explicites et testables. */
+/**
+ * Critères de maîtrise, explicites et testables.
+ *
+ * Les critères qui portent sur les réussites s'entendent **notes de qualité**
+ * (`MASTERY_QUALITY_GRADES` = `good`, `easy`), pas « note correcte » :
+ * `hard` entretient la carte pour l'ordonnanceur mais ne prouve pas la
+ * maîtrise. L'évaluateur (`@/domain/mastery/evaluator`) recalcule lui-même ces
+ * séries depuis les `ReviewLog` ; il ne lit jamais
+ * `CardState.consecutiveSuccesses`, qui est le compteur — plus permissif — de
+ * l'ordonnanceur sur `CORRECT_GRADES`.
+ */
 export interface MasteryCriteria {
   /** Intervalle SRS minimal d'une carte maîtrisée, en jours. */
   readonly minIntervalDays: number;
-  /** Réussites consécutives minimales sur la carte. */
+  /**
+   * Réussites **de qualité** consécutives minimales, les plus récentes d'abord,
+   * recalculées par l'évaluateur depuis les `ReviewLog` (un `hard` ou un `again`
+   * interrompt la série).
+   */
   readonly minConsecutiveSuccesses: number;
-  /** Nombre minimal de révisions notées. */
+  /** Nombre minimal de révisions **de qualité** (`good`/`easy`) journalisées. */
   readonly minReps: number;
   /** Nombre de directions distinctes où la question a été produite. */
   readonly minDistinctDirections: number;

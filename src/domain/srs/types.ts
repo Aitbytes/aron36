@@ -55,8 +55,13 @@ export interface CardState {
   readonly lapses: number;
   /**
    * Réussites consécutives depuis la dernière chute.
-   * Une note compte dès qu'elle appartient à `CORRECT_GRADES` ; seule `again`
-   * remet ce compteur à zéro et provoque une chute.
+   *
+   * Compteur **de l'ordonnanceur** : une note compte dès qu'elle appartient à
+   * `CORRECT_GRADES` (`hard`, `good`, `easy`) ; seule `again` remet ce compteur
+   * à zéro et provoque une chute. Il ne doit pas être confondu avec la série de
+   * notes **de qualité** exigée par la maîtrise (`MASTERY_QUALITY_GRADES`), que
+   * l'évaluateur de maîtrise recalcule lui-même depuis les `ReviewLog` :
+   * un rappel `hard` entretient la carte ici, mais ne prouve pas la maîtrise.
    */
   readonly consecutiveSuccesses: number;
   /** Dernière révision notée, ou `null` pour une carte neuve. */
@@ -82,12 +87,35 @@ export interface SchedulerConfig {
   readonly hardLearningDelayMinutes: number;
   /** Palier de réapprentissage en minutes après une chute. */
   readonly relearningStepsMinutes: readonly number[];
+  /**
+   * Intervalle attribué à la **graduation du réapprentissage** (`good` qui
+   * quitte `relearning`), en jours. Valeur courte et volontairement indépendante
+   * de l'ancienne stabilité : après une chute, aucune rétention longue n'est
+   * prouvée, donc la carte repart de près (1 à 2 jours) et doit regagner ses
+   * intervalles par des réussites espacées. `easy` reçoit le double.
+   */
+  readonly relearningGraduatingIntervalDays: Days;
   /** Facteur de croissance de l'intervalle pour `hard` (≥ 1). */
   readonly hardGrowthFactor: number;
+  /**
+   * Plafond de l'intervalle atteignable par `hard` seul, en fraction de
+   * `maxIntervalDays` (0.5 = 50 %). Empêche `hard` de dériver vers le plafond
+   * global par répétition.
+   */
+  readonly hardIntervalCeilingRatio: Ratio;
   /** Facteur de base pour `good` (≥ 1). */
   readonly goodGrowthFactor: number;
   /** Facteur de base pour `easy` (≥ 1). */
   readonly easyGrowthFactor: number;
+  /**
+   * Plancher du multiplicateur de croissance lié à `difficulty`.
+   *
+   * Multiplicateur = interpolation linéaire entre `2 − floor` (carte facile,
+   * `D = 1`) et `floor` (carte difficile, `D = 10`), valant 1 pour la difficulté
+   * moyenne. `1` ⇒ la difficulté n'influe pas ; `0.5` ⇒ une carte de difficulté
+   * 10 croît trois fois moins vite qu'une carte de difficulté 1.
+   */
+  readonly difficultyGrowthFloor: Ratio;
   /** Bonus de croissance quand la révision est en retard : `+ x * (1 - R)`. */
   readonly overdueBonus: number;
   /** Facteur appliqué à la stabilité lors d'une chute. */
@@ -112,9 +140,12 @@ export const DEFAULT_SCHEDULER_CONFIG = {
   learningStepsMinutes: [1, 10],
   hardLearningDelayMinutes: 5,
   relearningStepsMinutes: [10],
+  relearningGraduatingIntervalDays: 1,
   hardGrowthFactor: 1.2,
+  hardIntervalCeilingRatio: 0.5,
   goodGrowthFactor: 1.8,
   easyGrowthFactor: 2.5,
+  difficultyGrowthFloor: 0.5,
   overdueBonus: 0.7,
   lapseStabilityFactor: 0.35,
   minimumStabilityDays: 0.5,
@@ -139,7 +170,10 @@ export const MAX_REVIEW_INTERVAL_DAYS = 180;
  * Résultat d'un ordonnancement, avant journalisation applicative.
  *
  * `retrievabilityBefore` est la probabilité de rappel estimée au moment de la
- * révision : `targetRetention ^ (elapsedDays / intervalDays)`, bornée à [0, 1].
+ * révision : `targetRetention ^ (elapsedDays / max(stabilityDays, ε))`, bornée à
+ * [0, 1]. Elle se mesure sur la **stabilité** mémorielle, jamais sur
+ * `intervalDays` : pendant `learning`/`relearning` l'intervalle n'est qu'un
+ * palier de minutes et n'a aucune signification mnésique.
  */
 export interface ScheduledReview {
   readonly previousCard: CardState;
@@ -156,9 +190,13 @@ export interface ScheduledReview {
 /**
  * Contrat de l'ordonnanceur.
  *
- * Monotonie garantie : pour `hard`, `good` et `easy`, `nextCard.dueAt` est
- * strictement postérieur à `previousCard.dueAt` et `intervalDays` ne diminue
- * jamais. Seul `again` peut ramener l'échéance à quelques minutes plus tard.
+ * Monotonie garantie pour `hard`, `good` et `easy`, quel que soit l'état
+ * d'entrée (y compris importé ou corrompu) :
+ * - `nextCard.dueAt > previousCard.dueAt` strictement ;
+ * - `nextCard.intervalDays <= maxIntervalDays` ;
+ * - `nextCard.intervalDays >= min(previousCard.intervalDays, maxIntervalDays)`,
+ *   le plafond primant sur un intervalle d'entrée hors bornes.
+ * Seul `again` peut ramener l'échéance à quelques minutes plus tard.
  */
 export interface Scheduler {
   /** Carte neuve due immédiatement, difficulté initiale, phase `new`. */

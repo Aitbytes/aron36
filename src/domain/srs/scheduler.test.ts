@@ -219,23 +219,55 @@ describe('Scheduler — chute et réapprentissage', () => {
     expect(result.nextCard.stabilityDays).toBe(DEFAULT_SCHEDULER_CONFIG.minimumStabilityDays);
   });
 
-  it('retour de réapprentissage : good remet en review avec au moins 1 jour', () => {
+  it('un seul good après une chute ne rend pas l’intervalle long perdu', () => {
+    const mature = makeCard({
+      intervalDays: 84,
+      stabilityDays: 84,
+      dueAt: at(84),
+      lastReviewedAt: T0,
+    });
+    const lapse = scheduler.schedule(mature, 'again', mature.dueAt);
+    expect(lapse.nextCard.stabilityDays).toBeCloseTo(
+      84 * DEFAULT_SCHEDULER_CONFIG.lapseStabilityFactor,
+      12,
+    );
+
+    const graduate = scheduler.schedule(lapse.nextCard, 'good', lapse.nextCard.dueAt);
+    expect(graduate.nextCard.phase).toBe('review');
+    expect(graduate.nextCard.intervalDays).toBeLessThanOrEqual(2);
+
+    // Il faut plusieurs réussites espacées pour revenir à 84 j.
+    let card = graduate.nextCard;
+    let successes = 0;
+    while (card.intervalDays < 84 && successes < 40) {
+      card = scheduler.schedule(card, 'good', card.dueAt).nextCard;
+      successes += 1;
+    }
+    expect(card.intervalDays).toBeGreaterThanOrEqual(84);
+    expect(successes).toBeGreaterThan(5);
+  });
+
+  it('retour de réapprentissage : good repart d’un intervalle court, pas de l’ancienne stabilité', () => {
+    // Carte mûre (84 j) tombée : S' = 29,4 j, intervalle de réapprentissage 10 min.
     const lapsed = makeCard({
       phase: 'relearning',
       intervalDays: 10 / 1440,
-      stabilityDays: DEFAULT_SCHEDULER_CONFIG.minimumStabilityDays,
+      stabilityDays: 84 * DEFAULT_SCHEDULER_CONFIG.lapseStabilityFactor,
       learningStep: 0,
       dueAt: T0,
       lastReviewedAt: T0 - minutes(10),
     });
     const result = scheduler.schedule(lapsed, 'good', T0);
     expect(result.nextCard.phase).toBe('review');
-    expect(result.nextCard.intervalDays).toBeGreaterThanOrEqual(
-      DEFAULT_SCHEDULER_CONFIG.minimumReviewIntervalDays,
+    expect(result.nextCard.intervalDays).toBe(
+      DEFAULT_SCHEDULER_CONFIG.relearningGraduatingIntervalDays,
     );
+    // 29,4 j × 1,8 donnerait ~55 j : la chute serait cosmétique.
+    expect(result.nextCard.intervalDays).toBeLessThanOrEqual(2);
+    expect(result.nextCard.stabilityDays).toBe(result.nextCard.intervalDays);
   });
 
-  it('retour de réapprentissage : easy remet en review avec au moins 2 jours', () => {
+  it('retour de réapprentissage : easy remet en review avec un intervalle court', () => {
     const lapsed = makeCard({
       phase: 'relearning',
       intervalDays: 10 / 1440,
@@ -246,7 +278,9 @@ describe('Scheduler — chute et réapprentissage', () => {
     });
     const result = scheduler.schedule(lapsed, 'easy', T0);
     expect(result.nextCard.phase).toBe('review');
-    expect(result.nextCard.intervalDays).toBeGreaterThanOrEqual(2);
+    expect(result.nextCard.intervalDays).toBe(
+      DEFAULT_SCHEDULER_CONFIG.relearningGraduatingIntervalDays * 2,
+    );
   });
 });
 
@@ -263,18 +297,33 @@ describe('Scheduler — rétention et retard', () => {
     expect(late.retrievabilityBefore).toBeLessThan(onTime.retrievabilityBefore);
   });
 
-  it('applique exactement targetRetention ^ (elapsed / interval)', () => {
-    const card = makeCard({ intervalDays: 8, stabilityDays: 8, dueAt: T0, lastReviewedAt: T0 });
+  it('applique exactement targetRetention ^ (elapsed / stabilité)', () => {
+    // `stabilityDays` (16 j) diffère volontairement d'`intervalDays` (8 j) :
+    // c'est bien la stabilité qui porte la courbe d'oubli.
+    const card = makeCard({ intervalDays: 8, stabilityDays: 16, dueAt: T0, lastReviewedAt: T0 });
     const elapsed = 4;
     const result = scheduler.schedule(card, 'good', T0 + elapsed * DAY_MS);
     expect(result.retrievabilityBefore).toBeCloseTo(
-      DEFAULT_SCHEDULER_CONFIG.targetRetention ** (elapsed / 8),
+      DEFAULT_SCHEDULER_CONFIG.targetRetention ** (elapsed / 16),
       12,
     );
     expect(result.elapsedDays).toBeCloseTo(elapsed, 12);
   });
 
-  it('vaut 0 pour une carte neuve (intervalle nul)', () => {
+  it('ne s’effondre pas sur un intervalle de réapprentissage de quelques minutes', () => {
+    // Régression : `elapsed / intervalDays` avec I = 10 min donnait R ≈ 0.
+    const lapsed = makeCard({
+      phase: 'relearning',
+      intervalDays: 10 / 1440,
+      stabilityDays: 84 * DEFAULT_SCHEDULER_CONFIG.lapseStabilityFactor,
+      dueAt: T0 + minutes(10),
+      lastReviewedAt: T0,
+    });
+    const result = scheduler.schedule(lapsed, 'good', T0 + 12 * 60 * MINUTE_MS);
+    expect(result.retrievabilityBefore).toBeGreaterThan(0.99);
+  });
+
+  it('vaut 0 pour une carte jamais révisée (aucune trace mnésique)', () => {
     const fresh = scheduler.initialState(1, T0);
     const result = scheduler.schedule(fresh, 'good', T0);
     expect(result.retrievabilityBefore).toBe(0);
@@ -301,6 +350,34 @@ describe('Scheduler — rétention et retard', () => {
 });
 
 describe('Scheduler — difficulté bornée', () => {
+  it('lit réellement difficulty : 1 et 10 ne donnent pas le même intervalle pour good', () => {
+    const easyCard = makeCard({ intervalDays: 30, stabilityDays: 30, difficulty: 1 });
+    const hardCard = makeCard({ intervalDays: 30, stabilityDays: 30, difficulty: 10 });
+    const easy = scheduler.schedule(easyCard, 'good', T0).nextCard.intervalDays;
+    const hard = scheduler.schedule(hardCard, 'good', T0).nextCard.intervalDays;
+    expect(easy).toBeGreaterThan(hard);
+  });
+
+  it('borne la croissance de hard : 30 hard consécutifs restent loin du plafond', () => {
+    const ceiling =
+      DEFAULT_SCHEDULER_CONFIG.maxIntervalDays * DEFAULT_SCHEDULER_CONFIG.hardIntervalCeilingRatio;
+    for (const difficulty of [1, 5, 10]) {
+      let card = makeCard({
+        phase: 'review',
+        intervalDays: 1,
+        stabilityDays: 1,
+        difficulty,
+        dueAt: T0,
+        lastReviewedAt: T0,
+      });
+      for (let index = 0; index < 30; index += 1) {
+        card = scheduler.schedule(card, 'hard', card.dueAt).nextCard;
+        expect(card.intervalDays).toBeLessThanOrEqual(ceiling);
+      }
+      expect(card.intervalDays).toBeLessThan(DEFAULT_SCHEDULER_CONFIG.maxIntervalDays);
+    }
+  });
+
   it('reste dans [1, 10] après de nombreuses notes extrêmes', () => {
     let card = scheduler.initialState(1, T0);
     for (let i = 0; i < 60; i += 1) {
@@ -343,6 +420,14 @@ describe('Scheduler — previewIntervals', () => {
         expect(scheduler.schedule(card, grade, T0).nextCard.intervalDays).toBe(preview[grade]);
       }
     }
+  });
+
+  it('est strictement croissant sur une carte consolidée', () => {
+    const card = makeCard({ intervalDays: 30, stabilityDays: 30, difficulty: 5 });
+    const preview = scheduler.previewIntervals(card, T0);
+    expect(preview.again).toBeLessThan(preview.hard);
+    expect(preview.hard).toBeLessThan(preview.good);
+    expect(preview.good).toBeLessThan(preview.easy);
   });
 });
 
