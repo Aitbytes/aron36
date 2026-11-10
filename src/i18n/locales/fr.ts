@@ -400,6 +400,10 @@ export const frMessages = {
 
   'train.progressText': 'Question {current} sur {total}',
 
+  // ── Mise à jour de l'application (service worker) ────────────────────────
+  'update.available': 'Nouvelle version disponible',
+  'update.reload': 'Recharger',
+
   // ── Grand Oral (Phase 5) ─────────────────────────────
   'grandOral.title': 'Grand Oral',
   'grandOral.description':

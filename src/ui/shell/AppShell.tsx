@@ -4,6 +4,7 @@ import { selectLevel, selectStreak } from '@/application/store';
 import type { AppScreen } from '@/application/store';
 import { useLocalizedText, useT } from '@/i18n';
 import type { MessageKey } from '@/i18n';
+import { UpdateBanner } from '@/pwa';
 import {
   CollectionScreen,
   HomeScreen,
@@ -89,6 +90,13 @@ export function AppShell() {
           </IconButton>
         </div>
       </header>
+
+      {/*
+        Mise à jour du service worker (Phase 5) — seule UI ajoutée pour la PWA.
+        Elle ne rend rien tant qu'aucun nouveau worker n'attend (défaut = absent
+        du DOM) et ne recharge jamais d'elle-même.
+      */}
+      <UpdateBanner />
 
       <div className={styles.body}>
         <main id="main-content" role="main" tabIndex={-1} className={styles.main}>
