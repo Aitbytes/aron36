@@ -2,14 +2,16 @@ import { describe, expect, expectTypeOf, it } from 'vitest';
 
 import type { XpAward } from '@/domain/gamification/types';
 import type { PersonalHook } from '@/domain/memory/types';
+import { MAX_SESSION_LOG_ENTRIES } from '@/domain/progress/types';
 import type { ProgressError } from '@/domain/progress/types';
 import type {
   AnswerFeedback,
   SessionAnswer,
+  SessionLog,
   SessionState,
   SessionSummary,
 } from '@/domain/session/types';
-import type { ScheduledReview } from '@/domain/srs/types';
+import type { ReviewLog, ScheduledReview } from '@/domain/srs/types';
 
 import { createInitialAppState } from './initialState';
 import { reduce } from './reducer';
@@ -38,6 +40,52 @@ function makeXp(amount: number, questionId: number | null = null): XpAward {
 /** Erreur de persistance factice. */
 function makeError(code: ProgressError['code'] = 'write-failed'): ProgressError {
   return { code, message: 'échec technique de test', details: null };
+}
+
+/**
+ * Journal de révision factice porté par l'action (Phase 3-C) : le réducteur
+ * l'utilise **tel quel** — l'id vient de `IdPort` côté cas d'usage, jamais de
+ * `SessionAnswer.itemId`.
+ */
+function makeReviewLog(overrides: Partial<ReviewLog> = {}): ReviewLog {
+  return {
+    id: 'review-log-de-test',
+    sessionId: 'session-de-test',
+    questionId: 1,
+    direction: 'keyword-to-question',
+    exerciseKind: 'production',
+    grade: 'good',
+    reviewedAt: NOW,
+    previousDueAt: null,
+    nextDueAt: NOW + 86_400_000,
+    intervalDays: 1,
+    elapsedDays: 0,
+    responseTimeMs: 5_000,
+    hintsUsed: 0,
+    confidence: null,
+    ...overrides,
+  };
+}
+
+/** Journal de session factice porté par `session/completed`. */
+function makeSessionLog(overrides: Partial<SessionLog> = {}): SessionLog {
+  return {
+    sessionId: 'session-de-test',
+    mode: 'review',
+    planSeed: 'seed-de-test',
+    startedAt: NOW,
+    endedAt: NOW + 60_000,
+    durationMs: 60_000,
+    window: 'morning',
+    itemCount: 1,
+    productionCount: 1,
+    discriminationCount: 0,
+    spokenCount: 0,
+    correctCount: 1,
+    accuracy: 1,
+    xpAwarded: 12,
+    ...overrides,
+  };
 }
 
 describe('createInitialAppState — état initial', () => {
@@ -82,6 +130,7 @@ describe('réducteur — pureté', () => {
       feedback: submission.feedback ?? feedbackPlaceholder(),
       scheduledReview: null,
       xp: makeXp(12, submission.answer.questionId),
+      reviewLog: null,
     };
 
     const frozen = deepFreeze({
@@ -260,6 +309,18 @@ describe('réducteur — une action, un état', () => {
       intervalDeltaDays: 2,
     };
 
+    const actionReviewLog = makeReviewLog({
+      id: 'review-log-de-test',
+      sessionId: session.plan.id,
+      questionId: submission.answer.questionId,
+      grade: 'good',
+      reviewedAt: NOW + 5_000,
+      previousDueAt: 0,
+      nextDueAt: NOW + 86_400_000,
+      intervalDays: 12,
+      elapsedDays: 10,
+    });
+
     const next = reduce(state, {
       type: 'session/answered',
       session: submission.state,
@@ -267,6 +328,8 @@ describe('réducteur — une action, un état', () => {
       feedback: submission.feedback ?? feedbackPlaceholder(),
       scheduledReview: scheduled,
       xp: makeXp(12, submission.answer.questionId),
+      // Journal fabriqué par le cas d'usage (id = `IdPort`) : utilisé tel quel.
+      reviewLog: actionReviewLog,
     });
 
     // Session remplacée par celle du moteur, feedback affiché.
@@ -279,19 +342,13 @@ describe('réducteur — une action, un état', () => {
     expect(next.progress.player.totalXp).toBe(22);
     // Carte SRS remplacée par la carte suivante de l'ordonnanceur.
     expect(next.progress.cards['1']).toEqual(scheduled.nextCard);
-    // Journal de révision dérivé de l'action.
+    // Le journal de l'action est utilisé **tel quel** (référence identique) :
+    // le réducteur ne dérive plus aucun identifiant (raccordement Phase 3-C).
     expect(next.progress.reviewLogs).toHaveLength(1);
     const log = next.progress.reviewLogs[0];
-    expect(log).toMatchObject({
-      sessionId: session.plan.id,
-      questionId: submission.answer.questionId,
-      grade: 'good',
-      reviewedAt: NOW + 5_000,
-      previousDueAt: 0,
-      nextDueAt: NOW + 86_400_000,
-      intervalDays: 12,
-      elapsedDays: 10,
-    });
+    expect(log).toBe(actionReviewLog);
+    expect(log?.id).toBe('review-log-de-test');
+    expect(log?.id).not.toBe(submission.answer.itemId);
     // savedAt reste la propriété du cas d'usage (progress/saved).
     expect(next.progress.savedAt).toBe(NOW);
   });
@@ -309,6 +366,8 @@ describe('réducteur — une action, un état', () => {
       feedback: submission.feedback ?? feedbackPlaceholder(),
       scheduledReview: null,
       xp: makeXp(0),
+      // Un prétest n'est jamais journalisé : l'action porte `null`.
+      reviewLog: null,
     });
 
     expect(next.progress.reviewLogs).toHaveLength(0);
@@ -329,6 +388,10 @@ describe('réducteur — une action, un état', () => {
         feedback: first.feedback ?? feedbackPlaceholder(),
         scheduledReview: null,
         xp: makeXp(12, first.answer.questionId),
+        reviewLog: makeReviewLog({
+          sessionId: session.plan.id,
+          questionId: first.answer.questionId,
+        }),
       },
     );
 
@@ -350,7 +413,14 @@ describe('réducteur — une action, un état', () => {
       },
     };
 
-    const next = reduce(answered, { type: 'session/completed', summary, xp: makeXp(10) });
+    const next = reduce(answered, {
+      type: 'session/completed',
+      summary,
+      xp: makeXp(10),
+      // Journal de session fabriqué par le cas d'usage (fenêtre L17 issue de
+      // ClockPort) : le réducteur l'ajoute au journal persisté.
+      sessionLog: makeSessionLog({ sessionId: session.plan.id }),
+    });
 
     expect(next.ui.feedback).toBeNull();
     expect(next.ui.screen).toBe('home');
@@ -360,6 +430,38 @@ describe('réducteur — une action, un état', () => {
     expect(next.session).toBe(first.state);
     expect(next.session?.phase).toBe('completed');
     expect(next.progress.player.totalXp).toBe(34);
+    // Raccordement Phase 3-C : le SessionLog porté par l'action est écrit.
+    expect(next.progress.sessionLogs).toHaveLength(1);
+    expect(next.progress.sessionLogs[0]).toEqual({
+      ...makeSessionLog({ sessionId: session.plan.id }),
+    });
+  });
+
+  it('session/completed ajoute le journal au progress persisté et tronque à MAX_SESSION_LOG_ENTRIES', () => {
+    const session = startReviewSession(1);
+    const saturatedLogs: SessionLog[] = Array.from(
+      { length: MAX_SESSION_LOG_ENTRIES },
+      (_unused, index) => makeSessionLog({ sessionId: `session-ancienne-${String(index)}` }),
+    );
+    const state = {
+      ...makeState({ sessionLogs: saturatedLogs }),
+      session,
+    };
+
+    const next = reduce(state, {
+      type: 'session/completed',
+      summary: makeSummary(session),
+      xp: makeXp(10),
+      sessionLog: makeSessionLog({ sessionId: session.plan.id }),
+    });
+
+    // La limite est respectée : les sessions les plus anciennes sortent du
+    // journal, la plus récente (celle de l'action) reste en fin de tableau.
+    expect(next.progress.sessionLogs).toHaveLength(MAX_SESSION_LOG_ENTRIES);
+    expect(next.progress.sessionLogs.at(-1)?.sessionId).toBe(session.plan.id);
+    expect(next.progress.sessionLogs.some((log) => log.sessionId === 'session-ancienne-0')).toBe(
+      false,
+    );
   });
 
   it('session/abandoned vide la session, son identifiant UI et le feedback', () => {
@@ -411,6 +513,10 @@ describe('réducteur — une action, un état', () => {
         feedback: submission.feedback ?? feedbackPlaceholder(),
         scheduledReview: null,
         xp: makeXp(12),
+        reviewLog: makeReviewLog({
+          sessionId: submission.state.plan.id,
+          questionId: submission.answer.questionId,
+        }),
       },
     );
 
@@ -492,6 +598,10 @@ describe('réducteur — exhaustivité des actions', () => {
     feedback: submission.feedback ?? feedbackPlaceholder(),
     scheduledReview: null,
     xp: makeXp(12),
+    reviewLog: makeReviewLog({
+      sessionId: submission.state.plan.id,
+      questionId: submission.answer.questionId,
+    }),
   };
 
   const ACTION_SAMPLES: { [T in AppAction['type']]: (state: AppState) => AppAction } = {
@@ -510,6 +620,7 @@ describe('réducteur — exhaustivité des actions', () => {
       type: 'session/completed',
       summary: makeSummary(session),
       xp: makeXp(10),
+      sessionLog: makeSessionLog({ sessionId: session.plan.id }),
     }),
     'session/abandoned': () => ({ type: 'session/abandoned' }),
     'ui/navigate': () => ({ type: 'ui/navigate', screen: 'train' }),

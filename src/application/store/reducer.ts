@@ -1,8 +1,6 @@
-import { MAX_REVIEW_LOG_ENTRIES } from '@/domain/progress/types';
+import { MAX_REVIEW_LOG_ENTRIES, MAX_SESSION_LOG_ENTRIES } from '@/domain/progress/types';
 import type { PersistedProgress } from '@/domain/progress/types';
 import type { HookLibrary } from '@/domain/memory/types';
-import type { ReviewLog } from '@/domain/srs/types';
-import type { EpochMs } from '@/domain/shared/types';
 
 import type { AppAction, AppState, UiState } from './types';
 
@@ -16,19 +14,24 @@ import type { AppAction, AppState, UiState } from './types';
  *   `Math.random()`, pas de stockage — tout instant utile arrive **dans
  *   l'action**, calculé par le cas d'usage via `ClockPort`.
  *
- * Choix documentés par cas (voir aussi la PR Phase 3-B) :
- * - `session/answered` applique lui-même les deltas de progression dérivables
- *   de l'action (XP, carte SRS suivante, journal de révision) et laisse
- *   `savedAt` intact : c'est le cas d'usage qui écrit, via `progress/saved` ;
+ * Choix documentés par cas (voir aussi la PR Phase 3-B et la PR Phase 3-C) :
+ * - `session/answered` applique les deltas de progression dérivables de
+ *   l'action (XP, carte SRS suivante, journal de révision **porté par
+ *   l'action**) et laisse `savedAt` intact : c'est le cas d'usage qui écrit,
+ *   via `progress/saved`. Le journal n'est pas dérivé ici : son `id` provient
+ *   de `IdPort.newReviewLogId()` (espace d'identifiants distinct de
+ *   `SessionAnswer.itemId`) et les prétests (L18) n'en produisent aucun —
+ *   l'action porte alors `reviewLog: null` ;
  * - `session/completed` conserve `session` (phase `completed`, matière de
  *   l'écran de bilan) et ramène `ui.screen` à `'home'` : une session finie ne
  *   peut pas piéger l'utilisateur sur l'écran d'entraînement, et
  *   `session/started` ou `session/abandoned` la remplaceront ;
- * - `session/completed` ne fabrique **pas** de `SessionLog` : le champ
- *   `SessionLog.window` (L17) est calculé depuis l'heure **locale** par
- *   `ClockPort`, que le réducteur ne possède pas. La journalisation persistée
- *   de la session revient au cas d'usage `finishSession`, qui émet
- *   `progress/replaced` avec l'agrégat complet ;
+ * - `session/completed` reçoit le `SessionLog` **déjà fabriqué** par le cas
+ *   d'usage `finishSession` — le champ `SessionLog.window` (L17) se calcule
+ *   depuis l'heure **locale** de `ClockPort`, que le réducteur ne possède pas —
+ *   et l'ajoute à `progress.sessionLogs` : sans ce raccordement, les métriques
+ *   `eveningSessions`/`morningSessions`/`perfectSessions`, la quête
+ *   `revision-du-soir` et plusieurs badges de production resteraient à zéro ;
  * - `progress/reset` et `progress/replaced` sont des chemins de
  *   **récupération** (donnée corrompue ou import) : ils purgent `lastError` ;
  *   `reset` retire en plus la session courante, dont les items référencent
@@ -64,58 +67,20 @@ function upsertHook(library: HookLibrary, hook: HookLibrary['hooks'][number]): H
 }
 
 /**
- * Construit la ligne de journal d'une réponse à partir des seules données de
- * l'action (contournement local, à arbitrer en Phase 4) :
- * - `id` : `SessionAnswer.itemId` est déjà unique (``${sessionId}:${index}``)
- *   et déterministe, il sert d'identifiant de journal ;
- * - `nextDueAt` / `intervalDays` : sans réordonnancement (discrimination,
- *   première exposition), la carte garde son échéance courante ;
- * - les prétests (L18) ne sont **jamais** journalisés : leur correction
- *   révélerait la réponse attendue (contrat du moteur de session).
- */
-function reviewLogFor(
-  state: AppState,
-  action: Extract<AppAction, { type: 'session/answered' }>,
-): ReviewLog | null {
-  const { answer, scheduledReview } = action;
-  if (answer.isPretest) {
-    return null;
-  }
-  const currentCard = state.progress.cards[answer.questionId];
-  const dueAt: EpochMs = scheduledReview?.nextCard.dueAt ?? currentCard?.dueAt ?? answer.answeredAt;
-  const intervalDays = scheduledReview?.nextCard.intervalDays ?? currentCard?.intervalDays ?? 0;
-
-  return {
-    id: answer.itemId,
-    sessionId: action.session.plan.id,
-    questionId: answer.questionId,
-    direction: answer.direction,
-    exerciseKind: answer.exerciseKind,
-    grade: answer.grade,
-    reviewedAt: answer.answeredAt,
-    previousDueAt: scheduledReview?.previousCard.dueAt ?? null,
-    nextDueAt: dueAt,
-    intervalDays,
-    elapsedDays: scheduledReview?.elapsedDays ?? 0,
-    responseTimeMs: answer.responseTimeMs,
-    hintsUsed: answer.hintsUsed,
-    confidence: answer.confidence,
-  };
-}
-
-/**
  * `session/answered` : XP, carte SRS suivante, journal de révision —
  * tronqués aux limites de persistance et sans toucher à `savedAt`.
+ *
+ * Le journal arrive **déjà fabriqué** dans l'action (`action.reviewLog`, avec
+ * son `id` issu de `IdPort`) : `null` pour un prétest (L18), jamais journalisé.
  */
 function applyAnswerToProgress(
   state: AppState,
   action: Extract<AppAction, { type: 'session/answered' }>,
 ): PersistedProgress {
-  const log = reviewLogFor(state, action);
   const reviewLogs =
-    log === null
+    action.reviewLog === null
       ? state.progress.reviewLogs
-      : [...state.progress.reviewLogs, log].slice(-MAX_REVIEW_LOG_ENTRIES);
+      : [...state.progress.reviewLogs, action.reviewLog].slice(-MAX_REVIEW_LOG_ENTRIES);
   const cards =
     action.scheduledReview === null
       ? state.progress.cards
@@ -192,12 +157,15 @@ export function reduce(state: AppState, action: AppAction): AppState {
 
     case 'session/completed':
       // `session` est conservée pour l'écran de bilan (phase `completed`) ;
-      // l'XP de fin de session est créditée. Le résumé persisté (`SessionLog`,
-      // tronqué à `MAX_SESSION_LOG_ENTRIES`) relève du cas d'usage, qui seul
-      // connaît la fenêtre locale (L17).
+      // l'XP de fin de session est créditée et le `SessionLog` fabriqué par
+      // `finishSession` (fenêtre L17 déduite de `ClockPort` côté cas d'usage)
+      // est ajouté au journal persisté, tronqué à `MAX_SESSION_LOG_ENTRIES`.
       return withUi(
         withProgress(state, {
           ...state.progress,
+          sessionLogs: [...state.progress.sessionLogs, action.sessionLog].slice(
+            -MAX_SESSION_LOG_ENTRIES,
+          ),
           player: {
             ...state.progress.player,
             totalXp: state.progress.player.totalXp + action.xp.amount,
