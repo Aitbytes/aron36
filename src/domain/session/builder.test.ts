@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { buildSession } from './builder';
+import { sessionEngine } from './engine';
 import type { SessionBuildContext, SessionBuildResult, SessionPlan, SessionRequest } from './types';
 import { makeCardsFor, makeContext, makeHook, makeLog, makeRequest } from './test-fixtures';
 
@@ -340,7 +341,12 @@ describe('builder — indices L9 et accroches L11', () => {
   });
 
   it('on-demand : échelle d’indices sans la réponse complète', () => {
-    const plan = buildOk(makeRequest({ mode: 'learning', maxItems: 5 }), dueCardsContext());
+    // `order-to-question` n'a pas d'indice confondu avec le cue : l'échelle
+    // complète (hors réponse) est visible telle quelle.
+    const plan = buildOk(
+      makeRequest({ mode: 'learning', maxItems: 5, directions: ['order-to-question'] }),
+      dueCardsContext(),
+    );
     const kinds = plan.items[0]?.hints.map((hint) => hint.kind) ?? [];
     expect(kinds).toEqual(['initials', 'first-words', 'keyword', 'mental-image']);
     expect(kinds).not.toContain('full-answer');
@@ -354,6 +360,65 @@ describe('builder — indices L9 et accroches L11', () => {
     const kinds = plan.items[0]?.hints.map((hint) => hint.kind) ?? [];
     expect(kinds).toContain('full-answer');
     expect(kinds.at(-1)).toBe('full-answer');
+  });
+
+  it('écarte l’indice dont le contenu égale le cue (keyword / mental-image)', () => {
+    const keywordPlan = buildOk(
+      makeRequest({ mode: 'learning', maxItems: 1, directions: ['keyword-to-question'] }),
+      dueCardsContext(),
+    );
+    const keywordItem = keywordPlan.items[0];
+    expect(keywordItem?.cue.kind).toBe('keyword');
+    const keywordKinds = keywordItem?.hints.map((hint) => hint.kind) ?? [];
+    expect(keywordKinds).not.toContain('keyword');
+    // Les aides plus faibles restent disponibles.
+    expect(keywordKinds).toContain('initials');
+    expect(keywordKinds).toContain('mental-image');
+
+    const imagePlan = buildOk(
+      makeRequest({ mode: 'learning', maxItems: 1, directions: ['image-to-question'] }),
+      dueCardsContext(),
+    );
+    const imageItem = imagePlan.items[0];
+    expect(imageItem?.cue.kind).toBe('image');
+    const imageKinds = imageItem?.hints.map((hint) => hint.kind) ?? [];
+    expect(imageKinds).not.toContain('mental-image');
+    // Le mot-clé, distinct du cue, reste proposé (pas de sur-filtrage).
+    expect(imageKinds).toContain('keyword');
+  });
+
+  it('un indice écarté ne peut pas être révélé : le noHintBonus reste protégé', () => {
+    const plan = buildOk(
+      makeRequest({ mode: 'learning', maxItems: 1, directions: ['keyword-to-question'] }),
+      dueCardsContext(),
+    );
+    const item = plan.items[0];
+    if (item === undefined) {
+      throw new Error('item attendu');
+    }
+    let state = sessionEngine.start(plan, 1_000_000);
+    // On tente de révéler plus d'indices qu'il n'en existe.
+    for (let attempt = 0; attempt < item.hints.length + 3; attempt += 1) {
+      state = sessionEngine.revealNextHint(state);
+    }
+    // Le compte plafonne au plan filtré : l'indice confondu avec le cue ne
+    // peut pas être « consommé » et ne coûte donc aucun bonus.
+    expect(state.revealedHints).toBe(item.hints.length);
+    expect(item.hints.some((hint) => hint.kind === 'keyword')).toBe(false);
+  });
+
+  it('aucun indice ne recopie le cue affiché, toutes directions', () => {
+    const plan = buildOk(makeRequest({ mode: 'learning', maxItems: 20 }), dueCardsContext());
+    for (const item of plan.items) {
+      const cueText =
+        item.cue.kind === 'keyword' || item.cue.kind === 'image' ? item.cue.text : null;
+      if (cueText === null) {
+        continue;
+      }
+      for (const hint of item.hints) {
+        expect(hint.content.fr).not.toBe(cueText.fr);
+      }
+    }
   });
 
   it('réinjecte l’accroche personnelle en indice (L11)', () => {
@@ -394,6 +459,30 @@ describe('builder — prétest L18', () => {
 
     const review = buildOk(makeRequest({ mode: 'review', maxItems: 3 }), dueCardsContext());
     expect(review.items.some((item) => item.isPretest)).toBe(false);
+  });
+});
+
+describe('builder — jugement de confiance réglable (L12)', () => {
+  it('un `requiresConfidence` explicite prime sur le défaut du mode', () => {
+    const forcedOn = buildOk(
+      makeRequest({ mode: 'learning', requiresConfidence: true }),
+      dueCardsContext(),
+    );
+    expect(forcedOn.config.requiresConfidence).toBe(true);
+
+    const forcedOff = buildOk(
+      makeRequest({ mode: 'review', requiresConfidence: false }),
+      dueCardsContext(),
+    );
+    expect(forcedOff.config.requiresConfidence).toBe(false);
+  });
+
+  it('sans demande explicite, le défaut du mode s’applique', () => {
+    const review = buildOk(makeRequest({ mode: 'review' }), dueCardsContext());
+    expect(review.config.requiresConfidence).toBe(true);
+
+    const learning = buildOk(makeRequest({ mode: 'learning' }), dueCardsContext());
+    expect(learning.config.requiresConfidence).toBe(false);
   });
 });
 

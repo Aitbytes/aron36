@@ -413,6 +413,23 @@ function firstWords(text: string, count = 3): string {
   return `${words.slice(0, count).join(' ')}…`;
 }
 
+/** Texte du cue qui pourrait se confondre avec un indice, selon la direction. */
+function cueTextFor(question: QuestionItem, direction: DrillDirection): LocalizedText | null {
+  switch (direction) {
+    case 'keyword-to-question':
+      return question.keyword;
+    case 'image-to-question':
+      return question.mentalImage;
+    default:
+      return null;
+  }
+}
+
+/** Égalité de texte localisé (fr et en), pour repérer un indice redondant. */
+function localizedEquals(left: LocalizedText, right: LocalizedText): boolean {
+  return left.fr === right.fr && left.en === right.en;
+}
+
 /** Construit un indice d'un niveau donné, ou `null` si le niveau est indisponible. */
 function buildHint(
   kind: HintKind,
@@ -467,15 +484,23 @@ function buildHints(
     return [];
   }
   const includeFullAnswer = policy === 'progressive';
+  const cueText = cueTextFor(question, direction);
   const hints: Hint[] = [];
   for (const kind of HINT_LADDER) {
     if (kind === 'full-answer' && !includeFullAnswer) {
       continue;
     }
     const hint = buildHint(kind, question, direction, hook);
-    if (hint !== null) {
-      hints.push(hint);
+    if (hint === null) {
+      continue;
     }
+    // Un indice dont le contenu **égale le cue** n'apprend rien (la réponse est
+    // déjà sous les yeux) et coûte pourtant le `noHintBonus` s'il est révélé :
+    // on ne le propose pas (revue Phase 4, `keyword`/`mental-image`).
+    if (cueText !== null && localizedEquals(hint.content, cueText)) {
+      continue;
+    }
+    hints.push(hint);
   }
   return hints;
 }
@@ -821,7 +846,9 @@ export function buildSession(
       ? 0
       : Math.min(DEFAULT_SESSION_LIMITS.maxDiscriminationRatio, 0.2),
     productionOnly: defaults.productionOnly,
-    requiresConfidence: defaults.requiresConfidence,
+    // Réglage du joueur prioritaire (L12) : `startSession` le renseigne depuis
+    // `confidencePromptEnabled` ; absent, le défaut du mode s'applique.
+    requiresConfidence: request.requiresConfidence ?? defaults.requiresConfidence,
     speedTargetMs: defaults.speedTargetMs,
   };
 

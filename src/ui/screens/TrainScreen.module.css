@@ -1,0 +1,282 @@
+.screen {
+  display: grid;
+  gap: var(--space-4);
+}
+
+.heading {
+  font-size: var(--text-xl);
+}
+
+.mode {
+  color: var(--color-text-muted);
+  font-size: var(--text-sm);
+}
+
+.chrome {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  align-items: center;
+  justify-content: space-between;
+}
+
+.stage {
+  display: grid;
+  gap: var(--space-4);
+}
+
+.cue {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.label {
+  color: var(--color-text-muted);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.cueOrder {
+  font-size: var(--text-2xl);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.keyword {
+  font-size: var(--text-2xl);
+  font-weight: 700;
+  color: var(--color-accent);
+}
+
+.image {
+  padding: var(--space-4);
+  border: 1px dashed var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-bg-elevated);
+  font-size: var(--text-lg);
+  font-style: italic;
+}
+
+.number {
+  font-size: var(--text-2xl);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.question {
+  font-size: var(--text-lg);
+  line-height: var(--leading-body);
+}
+
+.instruction {
+  font-weight: 600;
+  color: var(--color-accent-alt);
+}
+
+.form {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.field {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.input {
+  inline-size: 100%;
+  min-block-size: var(--target-min-size);
+  padding-inline: var(--space-3);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-raised);
+  color: var(--color-text);
+  font: inherit;
+}
+
+.input:focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 2px;
+}
+
+/**
+ * Champ de récitation : un `<textarea>` parce qu'une question d'Aron fait
+ * 15 à 30 mots. Un `<input>` d'une ligne obligeait à défiler horizontalement
+ * pour relire ce qu'on venait d'écrire — sur l'action centrale du produit.
+ */
+.textarea {
+  inline-size: 100%;
+  min-block-size: calc(var(--target-min-size) * 2);
+  padding: var(--space-3);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-raised);
+  color: var(--color-text);
+  font: inherit;
+  line-height: 1.5;
+  resize: vertical;
+}
+
+.textarea:focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 2px;
+}
+
+/* Compteur textuel : la barre seule n'annonce pas la position (a11y). */
+.sessionProgress {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.sessionProgressText {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: var(--text-sm);
+  font-variant-numeric: tabular-nums;
+}
+
+.muted {
+  color: var(--color-text-muted);
+  font-size: var(--text-sm);
+}
+
+.pretestLead {
+  padding: var(--space-3);
+  border-radius: var(--radius-sm);
+  background: var(--color-bg-elevated);
+}
+
+.hints {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.hintCounter {
+  color: var(--color-text-muted);
+  font-size: var(--text-sm);
+  font-variant-numeric: tabular-nums;
+}
+
+.hintList {
+  display: grid;
+  gap: var(--space-2);
+  padding: 0;
+  margin: 0;
+  list-style: none;
+}
+
+.hint {
+  padding: var(--space-2) var(--space-3);
+  border-inline-start: 3px solid var(--color-accent-alt);
+  background: var(--color-bg-elevated);
+}
+
+.confidence {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.channel {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.stepTitle {
+  font-size: var(--text-lg);
+}
+
+.options {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.revealed {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.expected {
+  font-size: var(--text-lg);
+  font-weight: 600;
+  line-height: var(--leading-body);
+}
+
+.mentalImage {
+  color: var(--color-text-muted);
+}
+
+.grades {
+  display: grid;
+  gap: var(--space-3);
+  padding-block-start: var(--space-2);
+  border-block-start: 1px solid var(--color-border);
+}
+
+.shortcut {
+  color: var(--color-text-muted);
+  font-size: var(--text-sm);
+}
+
+.reveal {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  align-items: center;
+}
+
+.feedback {
+  display: grid;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+}
+
+.feedback:focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 2px;
+}
+
+.correct {
+  color: var(--color-success);
+  font-weight: 700;
+}
+
+.incorrect {
+  color: var(--color-danger);
+  font-weight: 700;
+}
+
+.signal {
+  color: var(--color-text-muted);
+}
+
+.expectedLine {
+  line-height: var(--leading-body);
+}
+
+.xp {
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.primaryButton {
+  justify-self: start;
+}
+
+.error {
+  padding: var(--space-3);
+  border: 1px solid var(--color-danger);
+  border-radius: var(--radius-sm);
+  color: var(--color-danger);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .feedback {
+    transition: border-color var(--motion-normal) var(--easing-standard);
+  }
+}

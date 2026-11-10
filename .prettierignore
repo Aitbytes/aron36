@@ -9,3 +9,8 @@ test-results/
 # Documents hors périmètre de la Phase 1 (ne pas reformater)
 README.md
 docs/PLAN.md
+
+# Binaires et fichiers qu'aucun parseur Prettier ne couvre (icônes PWA, manifeste).
+# Le manifeste reste du JSON valide, vérifié par `scripts/build-sw.mjs`.
+public/icons/
+public/manifest.webmanifest

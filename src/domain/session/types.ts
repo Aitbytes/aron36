@@ -237,6 +237,12 @@ export interface SessionRequest {
   readonly maxItems?: number;
   readonly maxDurationMs?: DurationMs;
   readonly directions?: readonly DrillDirection[];
+  /**
+   * Force (ou désactive) le jugement de confiance avant révélation (L12).
+   * Absent, le défaut du mode s'applique ; la couche application le renseigne
+   * depuis le réglage `confidencePromptEnabled` du joueur.
+   */
+  readonly requiresConfidence?: boolean;
 }
 
 /** Dépendances pures nécessaires à la construction d'un plan. */
@@ -456,6 +462,13 @@ export interface SessionSummary {
   readonly accuracy: Ratio;
   readonly durationMs: DurationMs;
   readonly xpAwarded: number;
+  /** Productions déclarées à l'oral (L8), pour valoriser l'oral au bilan. */
+  readonly spokenCount: number;
+  /**
+   * Fenêtre de journée de la session (L17), déduite de `ClockPort`. Portée par
+   * le résumé pour que l'écran de bilan n'ait pas à relire les journaux.
+   */
+  readonly window: SessionWindow;
   readonly byDirection: Readonly<
     Record<DrillDirection, { readonly attempts: number; readonly correct: number }>
   >;

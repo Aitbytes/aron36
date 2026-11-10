@@ -1,0 +1,652 @@
+import { render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { describe, expect, it, vi } from 'vitest';
+
+import { makeDueCard, makeProgress } from '@/application/store/test-fixtures';
+import { UseCaseRejection } from '@/application/usecases';
+import type { UseCases } from '@/application/usecases';
+import { findSeedStartingWithDiscrimination } from '@/application/usecases/test-doubles';
+import { QUESTION_CATALOG } from '@/domain/questions';
+import { sessionBuilder, sessionEngine } from '@/domain/session';
+import { makeContext, makeRequest } from '@/domain/session/test-fixtures';
+import type { QuestionId } from '@/domain/shared/types';
+import type { CardState } from '@/domain/srs/types';
+import type {
+  AnswerChannel,
+  SessionItem,
+  SessionState,
+  SessionSummary,
+} from '@/domain/session/types';
+import type { DrillDirection, ReviewGrade } from '@/domain/shared/types';
+import { createUiHarness, TestProviders } from '@/test/uiHarness';
+import type { UiHarness } from '@/test/uiHarness';
+
+import { SessionSummaryView } from './SessionSummaryView';
+import { TrainScreen } from './TrainScreen';
+
+/** Instant de référence des sessions plantées (aucune horloge réelle). */
+const FIXTURE_NOW = 1_000_000;
+
+/** Monte l'écran de jeu avec la pile de fournisseurs réelle (sans `localStorage`). */
+function renderTrain(harness: UiHarness, useCases?: UseCases) {
+  return render(
+    <TestProviders harness={harness} useCases={useCases}>
+      <TrainScreen />
+    </TestProviders>,
+  );
+}
+
+/** Démarre une vraie session via les cas d'usage puis l'installe dans le store. */
+function startSession(
+  harness: UiHarness,
+  input: Parameters<UseCases['startSession']['execute']>[0],
+) {
+  const started = harness.useCases.startSession.execute(input);
+  harness.store.dispatch({ type: 'session/started', state: started.state });
+  harness.store.dispatch({ type: 'ui/navigate', screen: 'train' });
+  return started.state;
+}
+
+/** Session plantée d'une seule question, forcée sur une direction de drill. */
+function directionState(direction: DrillDirection): SessionState {
+  const built = sessionBuilder.build(
+    makeRequest({
+      sessionId: `dir-${direction}`,
+      seed: `seed-${direction}`,
+      now: FIXTURE_NOW,
+      mode: 'learning',
+      questionIds: [25],
+      directions: [direction],
+      maxItems: 1,
+    }),
+    makeContext(),
+  );
+  if (!built.ok) {
+    throw new Error(`plan de fixture invalide : ${built.failure}`);
+  }
+  return sessionEngine.start(built.plan, FIXTURE_NOW);
+}
+
+/** Session dont le premier item est un QCM (drill de reconnaissance, L1). */
+function discriminationState(): SessionState {
+  const cards = new Map<QuestionId, CardState>();
+  for (let questionId = 1; questionId <= 12; questionId += 1) {
+    cards.set(questionId, {
+      questionId,
+      phase: 'review',
+      dueAt: 0,
+      intervalDays: 3,
+      stabilityDays: 3,
+      learningStep: 0,
+      difficulty: 5,
+      reps: 3,
+      lapses: 0,
+      consecutiveSuccesses: 2,
+      lastReviewedAt: 0,
+      lastGrade: 'good',
+    });
+  }
+  const built = sessionBuilder.build(
+    makeRequest({
+      mode: 'learning',
+      sessionId: 'discrimination-ui',
+      seed: findSeedStartingWithDiscrimination(),
+      now: FIXTURE_NOW,
+      maxItems: 5,
+    }),
+    {
+      catalog: QUESTION_CATALOG,
+      cards,
+      hooks: [],
+      recentLogs: [],
+      unlockedActIds: [1],
+      masteredActIds: [],
+    },
+  );
+  if (!built.ok) {
+    throw new Error(`plan de discrimination invalide : ${built.failure}`);
+  }
+  return sessionEngine.start(built.plan, FIXTURE_NOW);
+}
+
+function plantState(harness: UiHarness, state: SessionState): void {
+  harness.store.dispatch({ type: 'session/started', state });
+  harness.store.dispatch({ type: 'ui/navigate', screen: 'train' });
+}
+
+function firstItem(harness: UiHarness): SessionItem {
+  const item = harness.store.getState().session?.plan.items[0];
+  if (item === undefined) {
+    throw new Error('item de session manquant');
+  }
+  return item;
+}
+
+const GRADES: readonly ReviewGrade[] = ['again', 'hard', 'good', 'easy'];
+
+const GRADE_LABELS: Readonly<Record<ReviewGrade, string>> = {
+  again: '1. Je ne savais pas',
+  hard: '2. Difficile',
+  good: '3. Bien',
+  easy: '4. Facile',
+};
+
+describe('TrainScreen — rendu des directions de drill', () => {
+  it('order : affiche acte et position, jamais le numéro de question', () => {
+    const harness = createUiHarness();
+    plantState(harness, directionState('order-to-question'));
+    renderTrain(harness);
+
+    expect(screen.getByText('Acte 3, position 1')).toBeInTheDocument();
+    expect(screen.queryByText('Question 25')).toBeNull();
+    expect(screen.getByLabelText('Ta réponse').tagName).toBe('TEXTAREA');
+  });
+
+  it('keyword : met en avant le mot-clé et propose la saisie libre', () => {
+    const harness = createUiHarness();
+    plantState(harness, directionState('keyword-to-question'));
+    renderTrain(harness);
+
+    expect(screen.getByText('Mot-clé')).toBeInTheDocument();
+    expect(screen.getByText('mot-cle-25')).toBeInTheDocument();
+    expect(screen.getByLabelText('Ta réponse').tagName).toBe('TEXTAREA');
+  });
+
+  it('image : présente l’image mentale et propose la saisie libre', () => {
+    const harness = createUiHarness();
+    plantState(harness, directionState('image-to-question'));
+    renderTrain(harness);
+
+    expect(screen.getByText('Image mentale')).toBeInTheDocument();
+    expect(screen.getByText('image mentale 25')).toBeInTheDocument();
+    expect(screen.getByLabelText('Ta réponse').tagName).toBe('TEXTAREA');
+  });
+
+  it('number : affiche « Question 25 » et propose la saisie libre', () => {
+    const harness = createUiHarness();
+    plantState(harness, directionState('number-to-question'));
+    renderTrain(harness);
+
+    expect(screen.getByText('Question 25')).toBeInTheDocument();
+    expect(screen.getByLabelText('Ta réponse').tagName).toBe('TEXTAREA');
+  });
+
+  it('question : affiche l’énoncé, la consigne et un champ numérique', () => {
+    const harness = createUiHarness();
+    plantState(harness, directionState('question-to-number'));
+    renderTrain(harness);
+
+    expect(screen.getByText('Question numéro 25 ?')).toBeInTheDocument();
+    expect(screen.getByText('Quel numéro ?')).toBeInTheDocument();
+    expect(screen.getByLabelText('Numéro de la question')).toHaveAttribute('type', 'number');
+    expect(screen.getByLabelText('Numéro de la question')).toHaveAttribute('inputmode', 'numeric');
+  });
+});
+
+describe('TrainScreen — QCM explicitement étiqueté', () => {
+  it('annonce un drill de reconnaissance, pas une simple question', () => {
+    const harness = createUiHarness();
+    plantState(harness, discriminationState());
+    renderTrain(harness);
+
+    expect(firstItem(harness).exerciseKind).toBe('discrimination');
+    expect(
+      screen.getByRole('heading', { name: 'Reconnaissance : choisis la bonne question' }),
+    ).toBeInTheDocument();
+    expect(screen.getByText('Drill de reconnaissance')).toBeInTheDocument();
+  });
+});
+
+describe('TrainScreen — indices progressifs', () => {
+  it('révèle les indices progressivement puis les plafonne', async () => {
+    const user = userEvent.setup();
+    const harness = createUiHarness();
+    startSession(harness, { mode: 'learning', questionIds: [7], maxItems: 1 });
+    renderTrain(harness);
+
+    const hints = firstItem(harness).hints;
+    expect(hints.length).toBeGreaterThan(1);
+
+    const reveal = screen.getByRole('button', { name: 'Révéler un indice' });
+    await user.click(reveal);
+    expect(screen.getByText('Indices utilisés : 1')).toBeInTheDocument();
+
+    for (let index = 1; index < hints.length; index += 1) {
+      await user.click(reveal);
+    }
+    expect(screen.getByText(`Indices utilisés : ${hints.length}`)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Révéler un indice' })).toBeNull();
+    expect(screen.getByText('Tous les indices sont révélés.')).toBeInTheDocument();
+  });
+
+  it('masque les indices dès que la réponse est révélée', async () => {
+    const user = userEvent.setup();
+    const harness = createUiHarness();
+    startSession(harness, { mode: 'learning', questionIds: [7], maxItems: 1 });
+    renderTrain(harness);
+
+    expect(screen.getByRole('button', { name: 'Révéler un indice' })).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Voir la réponse' }));
+
+    expect(screen.queryByRole('heading', { name: 'Indices' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Révéler un indice' })).toBeNull();
+  });
+
+  it('masque les indices après une révélation locale (confiance requise)', async () => {
+    const user = userEvent.setup();
+    const harness = createUiHarness({
+      progress: makeProgress({ cards: { '7': makeDueCard(7, 0) } }),
+    });
+    startSession(harness, { mode: 'review', questionIds: [7], maxItems: 1 });
+    renderTrain(harness);
+
+    await user.click(screen.getByRole('button', { name: '3 — moyen' }));
+    await user.click(screen.getByRole('button', { name: 'Voir la réponse' }));
+
+    expect(screen.queryByRole('heading', { name: 'Indices' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Révéler un indice' })).toBeNull();
+  });
+
+  it('n’affiche aucun bouton quand l’item n’a pas d’indice', () => {
+    const harness = createUiHarness({ progress: makeProgress() });
+    startSession(harness, { mode: 'grand-oral', questionIds: [7], maxItems: 1 });
+    renderTrain(harness);
+
+    expect(firstItem(harness).hints).toEqual([]);
+    expect(screen.queryByRole('button', { name: 'Révéler un indice' })).toBeNull();
+    expect(screen.getByText('Aucun indice pour cet item.')).toBeInTheDocument();
+  });
+});
+
+describe('TrainScreen — confiance (L12)', () => {
+  it('bloque la révélation sans confiance, puis l’autorise et transmet la note', async () => {
+    const user = userEvent.setup();
+    const harness = createUiHarness({
+      progress: makeProgress({ cards: { '7': makeDueCard(7, 0) } }),
+    });
+    startSession(harness, { mode: 'review', questionIds: [7], maxItems: 1 });
+    renderTrain(harness);
+
+    const reveal = screen.getByRole('button', { name: 'Voir la réponse' });
+    expect(reveal).toBeDisabled();
+    expect(
+      screen.getByText('Choisis un niveau de confiance avant de pouvoir révéler la réponse.'),
+    ).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: '3 — moyen' }));
+    expect(reveal).toBeEnabled();
+
+    await user.click(reveal);
+    expect(screen.getByRole('heading', { name: 'Réponse attendue' })).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: GRADE_LABELS.good }));
+    expect(screen.getByRole('heading', { name: 'Correction' })).toBeInTheDocument();
+
+    const logs = harness.store.getState().progress.reviewLogs;
+    expect(logs.at(-1)?.confidence).toBe(3);
+  });
+});
+
+describe('TrainScreen — synthèse vocale (L8)', () => {
+  it('lit la question attendue à la révélation, jamais avant', async () => {
+    const user = userEvent.setup();
+    const harness = createUiHarness();
+    startSession(harness, { mode: 'learning', questionIds: [7], maxItems: 1 });
+    const item = firstItem(harness);
+    const expected =
+      item.expectedAnswer.kind === 'question'
+        ? item.expectedAnswer.text.fr
+        : `Question ${String(item.expectedAnswer.questionNumber)}`;
+    const speak = vi.fn((_input: { readonly text: string }) =>
+      Promise.resolve({ ok: true } as const),
+    );
+    const useCases: UseCases = { ...harness.useCases, speak: { execute: speak } };
+    renderTrain(harness, useCases);
+
+    expect(speak).not.toHaveBeenCalled();
+    await user.click(screen.getByRole('button', { name: 'Voir la réponse' }));
+
+    expect(speak).toHaveBeenCalledTimes(1);
+    expect(speak.mock.calls[0]?.[0]).toEqual({ text: expected });
+  });
+
+  it('ne lit rien pour un prétest, jamais corrigé (L18)', async () => {
+    const user = userEvent.setup();
+    const harness = createUiHarness({ progress: makeProgress() });
+    startSession(harness, { mode: 'discovery', questionIds: [7], maxItems: 1 });
+    const speak = vi.fn((_input: { readonly text: string }) =>
+      Promise.resolve({ ok: true } as const),
+    );
+    const useCases: UseCases = { ...harness.useCases, speak: { execute: speak } };
+    renderTrain(harness, useCases);
+
+    await user.click(screen.getByRole('button', { name: 'Valider ma devinette' }));
+
+    expect(speak).not.toHaveBeenCalled();
+  });
+});
+
+describe('TrainScreen — notation (L12/L13)', () => {
+  it.each(GRADES)('dispatche la note « %s » et affiche le feedback', async (grade) => {
+    const user = userEvent.setup();
+    const harness = createUiHarness();
+    startSession(harness, { mode: 'learning', questionIds: [7], maxItems: 1 });
+    renderTrain(harness);
+
+    await user.click(screen.getByRole('button', { name: 'Voir la réponse' }));
+    await user.click(screen.getByRole('button', { name: GRADE_LABELS[grade] }));
+
+    const logs = harness.store.getState().progress.reviewLogs;
+    expect(logs.at(-1)?.grade).toBe(grade);
+    expect(screen.getByRole('heading', { name: 'Correction' })).toBeInTheDocument();
+  });
+
+  it('affiche le feedback puis avance sur « Continuer »', async () => {
+    const user = userEvent.setup();
+    const harness = createUiHarness();
+    startSession(harness, { mode: 'learning', questionIds: [7, 8], maxItems: 2 });
+    renderTrain(harness);
+
+    const firstBar = screen.getByRole('progressbar', {
+      name: 'Progression de la session : 1 sur 2',
+    });
+    // Le texte et la barre portent le même numéro de question (a11y) : au cran
+    // 1, `aria-valuenow` vaut 1, plus 0.
+    expect(firstBar).toHaveAttribute('aria-valuenow', '1');
+    expect(firstBar).toHaveAttribute('aria-valuetext', '50 %');
+    await user.click(screen.getByRole('button', { name: 'Voir la réponse' }));
+    await user.click(screen.getByRole('button', { name: GRADE_LABELS.good }));
+
+    expect(screen.getByRole('heading', { name: 'Correction' })).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Continuer' }));
+
+    expect(screen.queryByRole('heading', { name: 'Correction' })).toBeNull();
+    const secondBar = screen.getByRole('progressbar', {
+      name: 'Progression de la session : 2 sur 2',
+    });
+    expect(secondBar).toHaveAttribute('aria-valuenow', '2');
+  });
+});
+
+describe('TrainScreen — prétest (L18)', () => {
+  it('affiche une devinette sans feedback correctif', async () => {
+    const user = userEvent.setup();
+    const harness = createUiHarness({ progress: makeProgress() });
+    startSession(harness, { mode: 'discovery', questionIds: [7], maxItems: 1 });
+    renderTrain(harness);
+
+    expect(firstItem(harness).isPretest).toBe(true);
+    expect(screen.getByText('Devine, puis on verra')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Voir la réponse' })).toBeNull();
+
+    await user.click(screen.getByRole('button', { name: 'Valider ma devinette' }));
+
+    expect(
+      screen.getByText('Devinette enregistrée. La correction arrivera à la prochaine tentative.'),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Correction' })).toBeNull();
+    expect(screen.queryByText('Réponse attendue')).toBeNull();
+  });
+
+  it('n’expose aucun indice en prétest, même quand le plan en construit', () => {
+    const harness = createUiHarness({ progress: makeProgress() });
+    startSession(harness, { mode: 'discovery', questionIds: [7], maxItems: 1 });
+    renderTrain(harness);
+
+    // Le plan en porte (politique progressive) mais l'écran ne doit pas les
+    // offrir : sinon `full-answer` donnerait la réponse du prétest.
+    expect(firstItem(harness).hints.length).toBeGreaterThan(0);
+    expect(screen.queryByRole('heading', { name: 'Indices' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Révéler un indice' })).toBeNull();
+    expect(screen.getByText('Aucun indice en prétest : devine de mémoire.')).toBeInTheDocument();
+  });
+});
+
+describe('TrainScreen — abandon', () => {
+  it('confirme l’abandon puis ramène à l’accueil', async () => {
+    const user = userEvent.setup();
+    const harness = createUiHarness();
+    startSession(harness, { mode: 'learning', questionIds: [7], maxItems: 1 });
+    renderTrain(harness);
+
+    await user.click(screen.getByRole('button', { name: 'Abandonner' }));
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Oui, abandonner' }));
+
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(harness.store.getState().session).toBeNull();
+    expect(harness.store.getState().ui.screen).toBe('home');
+  });
+});
+
+describe('TrainScreen — raccourcis documentés (ARCHITECTURE §11)', () => {
+  it('Espace révèle la réponse et H affiche un indice', async () => {
+    const user = userEvent.setup();
+    const harness = createUiHarness();
+    startSession(harness, { mode: 'learning', questionIds: [7], maxItems: 1 });
+    renderTrain(harness);
+
+    await user.keyboard('h');
+    expect(screen.getByText('Indices utilisés : 1')).toBeInTheDocument();
+
+    await user.keyboard(' ');
+    expect(screen.getByRole('heading', { name: 'Réponse attendue' })).toBeInTheDocument();
+  });
+
+  it('laisse le clavier au texte dans un champ de saisie', async () => {
+    const user = userEvent.setup();
+    const harness = createUiHarness();
+    startSession(harness, { mode: 'learning', questionIds: [7], maxItems: 1 });
+    renderTrain(harness);
+
+    const textarea = screen.getByLabelText('Ta réponse');
+    await user.click(textarea);
+    await user.keyboard('h');
+    await user.keyboard(' ');
+
+    expect(textarea).toHaveValue('h ');
+    expect(screen.queryByRole('heading', { name: 'Réponse attendue' })).toBeNull();
+    expect(screen.queryByText('Indices utilisés : 1')).toBeNull();
+  });
+
+  it('H reste inerte une fois la réponse révélée', async () => {
+    const user = userEvent.setup();
+    const harness = createUiHarness();
+    startSession(harness, { mode: 'learning', questionIds: [7], maxItems: 1 });
+    renderTrain(harness);
+
+    await user.keyboard(' ');
+    expect(screen.getByRole('heading', { name: 'Réponse attendue' })).toBeInTheDocument();
+
+    await user.keyboard('h');
+    expect(screen.queryByRole('heading', { name: 'Indices' })).toBeNull();
+  });
+});
+
+describe('TrainScreen — raccourci Entrée et modale', () => {
+  it('ignore Entrée quand la boîte d’abandon est ouverte', async () => {
+    const user = userEvent.setup();
+    const harness = createUiHarness();
+    startSession(harness, { mode: 'learning', questionIds: [7, 8], maxItems: 2 });
+    renderTrain(harness);
+
+    await user.click(screen.getByRole('button', { name: 'Voir la réponse' }));
+    await user.click(screen.getByRole('button', { name: GRADE_LABELS.good }));
+    expect(screen.getByRole('heading', { name: 'Correction' })).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Abandonner' }));
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+
+    await user.keyboard('{Enter}');
+
+    // `Entrée` aurait refermé le feedback et fait avancer la session : sous la
+    // modale, le raccourci global est neutralisé.
+    expect(harness.store.getState().ui.feedback).not.toBeNull();
+    expect(screen.getByRole('heading', { name: 'Correction' })).toBeInTheDocument();
+  });
+});
+
+describe('TrainScreen — refus', () => {
+  it('affiche un message traduit et laisse la session utilisable', async () => {
+    const user = userEvent.setup();
+    const harness = createUiHarness();
+    startSession(harness, { mode: 'learning', questionIds: [7], maxItems: 1 });
+
+    const failing: UseCases = {
+      ...harness.useCases,
+      submitAnswer: {
+        execute: () => {
+          throw new UseCaseRejection(
+            'session-submission-refused',
+            { kind: 'submission', failure: 'wrong-phase' },
+            'refus de test',
+          );
+        },
+      },
+    };
+    renderTrain(harness, failing);
+
+    await user.click(screen.getByRole('button', { name: 'Voir la réponse' }));
+    await user.click(screen.getByRole('button', { name: GRADE_LABELS.good }));
+
+    expect(
+      screen.getAllByText('La réponse a été refusée par le moteur de session.').length,
+    ).toBeGreaterThan(0);
+    // La notation reste disponible : la session n’est pas cassée.
+    expect(screen.getByRole('button', { name: GRADE_LABELS.hard })).toBeEnabled();
+  });
+});
+
+describe('TrainScreen — canal de réponse (L8)', () => {
+  it('propose écrit / à voix haute après révélation et transmet le canal', async () => {
+    const user = userEvent.setup();
+    const harness = createUiHarness();
+    startSession(harness, { mode: 'learning', questionIds: [7], maxItems: 1 });
+    const channels: AnswerChannel[] = [];
+    const useCases: UseCases = {
+      ...harness.useCases,
+      submitAnswer: {
+        execute: (input) => {
+          channels.push(input.channel);
+          return harness.useCases.submitAnswer.execute(input);
+        },
+      },
+    };
+    renderTrain(harness, useCases);
+
+    // Le canal n'est demandé qu'à la notation, pas pendant la réponse.
+    expect(screen.queryByRole('button', { name: 'À voix haute' })).toBeNull();
+    await user.click(screen.getByRole('button', { name: 'Voir la réponse' }));
+
+    await user.click(screen.getByRole('button', { name: 'À voix haute' }));
+    await user.click(screen.getByRole('button', { name: GRADE_LABELS.good }));
+
+    expect(channels).toEqual(['spoken']);
+    expect(harness.store.getState().session?.answers[0]?.channel).toBe('spoken');
+  });
+
+  it('déclare « par écrit » par défaut, sans choix explicite', async () => {
+    const user = userEvent.setup();
+    const harness = createUiHarness();
+    startSession(harness, { mode: 'learning', questionIds: [7], maxItems: 1 });
+    const channels: AnswerChannel[] = [];
+    const useCases: UseCases = {
+      ...harness.useCases,
+      submitAnswer: {
+        execute: (input) => {
+          channels.push(input.channel);
+          return harness.useCases.submitAnswer.execute(input);
+        },
+      },
+    };
+    renderTrain(harness, useCases);
+
+    await user.click(screen.getByRole('button', { name: 'Voir la réponse' }));
+    await user.click(screen.getByRole('button', { name: GRADE_LABELS.good }));
+
+    expect(channels).toEqual(['written']);
+  });
+});
+
+describe('TrainScreen — fin de session', () => {
+  it('affiche le bilan avec les valeurs du résumé, sans recalcul', async () => {
+    const user = userEvent.setup();
+    const harness = createUiHarness();
+    startSession(harness, { mode: 'learning', questionIds: [7], maxItems: 1 });
+
+    const capture: { summary: SessionSummary | null } = { summary: null };
+    const capturing: UseCases = {
+      ...harness.useCases,
+      submitAnswer: {
+        execute: (input) => {
+          const output = harness.useCases.submitAnswer.execute(input);
+          capture.summary = output.summary;
+          return output;
+        },
+      },
+    };
+    renderTrain(harness, capturing);
+
+    await user.click(screen.getByRole('button', { name: 'Voir la réponse' }));
+    await user.click(screen.getByRole('button', { name: GRADE_LABELS.good }));
+    await user.click(screen.getByRole('button', { name: 'Continuer' }));
+
+    expect(screen.getByRole('heading', { name: 'Session terminée' })).toBeInTheDocument();
+    const summary = capture.summary;
+    if (summary === null) {
+      throw new Error('le résumé de session doit avoir été produit');
+    }
+    expect(screen.getByText(`${String(Math.round(summary.accuracy * 100))} %`)).toBeInTheDocument();
+    expect(screen.getByText(`${String(summary.xpAwarded)} XP`)).toBeInTheDocument();
+  });
+});
+
+describe('SessionSummaryView', () => {
+  it('formate scrupuleusement les valeurs du résumé fourni', () => {
+    const harness = createUiHarness();
+    const summary: SessionSummary = {
+      sessionId: 'session-bilan',
+      mode: 'review',
+      itemCount: 3,
+      answeredCount: 3,
+      correctCount: 2,
+      accuracy: 0.5,
+      durationMs: 125_000,
+      xpAwarded: 42,
+      spokenCount: 1,
+      window: 'evening',
+      byDirection: {
+        'order-to-question': { attempts: 2, correct: 1 },
+        'keyword-to-question': { attempts: 1, correct: 1 },
+        'image-to-question': { attempts: 0, correct: 0 },
+        'number-to-question': { attempts: 0, correct: 0 },
+        'question-to-number': { attempts: 0, correct: 0 },
+      },
+    };
+    render(
+      <TestProviders harness={harness}>
+        <SessionSummaryView summary={summary} onReplay={() => undefined} onHome={() => undefined} />
+      </TestProviders>,
+    );
+
+    expect(screen.getByRole('heading', { name: 'Session terminée' })).toBeInTheDocument();
+    expect(screen.getByText('50 %')).toBeInTheDocument();
+    expect(screen.getByText('2 / 3 bonnes réponses')).toBeInTheDocument();
+    expect(screen.getByText('42 XP')).toBeInTheDocument();
+    expect(screen.getByText('2 min 5 s')).toBeInTheDocument();
+    expect(screen.getByText('1')).toBeInTheDocument();
+    expect(screen.getAllByText('Rang → question').length).toBeGreaterThan(0);
+    expect(screen.getByText('2 essais · 1 réussis')).toBeInTheDocument();
+  });
+});
+
+describe('TrainScreen — état sans session', () => {
+  it('annonce l’absence de session sans casser l’écran', () => {
+    const harness = createUiHarness();
+    renderTrain(harness);
+
+    expect(screen.getByText('Aucune session active.')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Entraînement' })).toBeInTheDocument();
+  });
+});
