@@ -1,7 +1,7 @@
 {
   "name": "aron36",
   "private": true,
-  "version": "0.1.0",
+  "version": "1.0.0",
   "type": "module",
   "description": "Entraîneur de mémorisation des 36 questions d'Arthur Aron — application statique hors ligne.",
   "license": "MIT",
