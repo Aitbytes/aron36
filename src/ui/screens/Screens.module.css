@@ -1,0 +1,132 @@
+.screen {
+  display: grid;
+  gap: var(--space-4);
+}
+
+.title {
+  font-size: var(--text-xl);
+}
+
+.description {
+  margin-block-start: var(--space-3);
+}
+
+.muted {
+  color: var(--color-text-muted);
+  font-size: var(--text-sm);
+}
+
+.description:not(:last-child) {
+  margin-block-end: var(--space-2);
+}
+
+.centered {
+  display: grid;
+  gap: var(--space-3);
+  justify-items: center;
+  padding-block: var(--space-7);
+  text-align: center;
+}
+
+/* ── Accueil ────────────────────────────────────────────────────────────── */
+
+.home {
+  display: grid;
+  gap: var(--space-4);
+}
+
+.hero {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.lead {
+  color: var(--color-text-muted);
+}
+
+.due {
+  font-weight: 600;
+}
+
+.error {
+  color: var(--color-danger);
+}
+
+.progress {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.progressRow {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.metaRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  color: var(--color-text-muted);
+  font-size: var(--text-sm);
+}
+
+.quests {
+  display: grid;
+  gap: var(--space-4);
+  padding: 0;
+  margin: 0;
+  list-style: none;
+}
+
+.quest {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.questHead {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  align-items: baseline;
+  justify-content: space-between;
+}
+
+.questTitle {
+  font-weight: 600;
+}
+
+.questProgress {
+  color: var(--color-text-muted);
+  font-size: var(--text-sm);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── Récupération de données ────────────────────────────────────────────── */
+
+.recovery {
+  display: grid;
+  gap: var(--space-3);
+  border-color: var(--color-danger);
+}
+
+.recoveryActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  align-items: center;
+}
+
+/*
+ * Le champ fichier est masqué : il est déclenché par un bouton natif voisin
+ * (libellé explicite, atteignable au clavier), ce qui évite un contrôle
+ * inaccessible ou un libellé cliquable détourné.
+ */
+.fileInput {
+  display: none;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .recovery {
+    transition: border-color var(--motion-normal) var(--easing-standard);
+  }
+}

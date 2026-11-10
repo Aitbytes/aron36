@@ -1,0 +1,50 @@
+.spinner {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+}
+
+.spinner svg {
+  width: 100%;
+  height: 100%;
+}
+
+.sm {
+  inline-size: 1rem;
+  block-size: 1rem;
+}
+
+.md {
+  inline-size: 1.5rem;
+  block-size: 1.5rem;
+}
+
+.track,
+.head {
+  fill: none;
+  stroke-width: 3;
+}
+
+.track {
+  stroke: var(--color-border);
+}
+
+.head {
+  stroke: var(--color-accent);
+  stroke-linecap: round;
+  stroke-dasharray: 18 40;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .head {
+    transform-origin: 50% 50%;
+    animation: spin 900ms linear infinite;
+  }
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}

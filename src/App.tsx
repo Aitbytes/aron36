@@ -1,40 +1,67 @@
+import { useEffect } from 'react';
+import type { ReactNode } from 'react';
+
+import type { ClockPort } from '@/application/ports/ClockPort';
+import type { AppStore } from '@/application/store';
+import type { UseCases } from '@/application/usecases';
+import { I18nProvider, useT } from '@/i18n';
+import { ToastProvider } from '@/ui/primitives';
+import { AppShell } from '@/ui/shell';
+import { ActionsProvider, ClockProvider, StoreProvider, useSelect } from '@/ui/store';
+
+export interface AppProps {
+  /** Store applicatif hydraté par la composition racine (`main.tsx`). */
+  readonly store: AppStore;
+  /** Horloge injectée : l'UI n'appelle jamais `Date.now()`. */
+  readonly clock: ClockPort;
+  /** Cas d'usage : consommés **uniquement** par `ActionsProvider`. */
+  readonly useCases: UseCases;
+}
+
 /**
- * Racine minimale de la Phase 1.
+ * Point de composition de l'interface.
  *
- * Aucune fonctionnalité métier : cet écran sert uniquement à prouver que la
- * chaîne React 19 + Vite + TypeScript + Vitest est opérationnelle. Les écrans
- * réels arrivent en Phase 4, contre les contrats de `src/domain/**\/types.ts`.
+ * Aucune logique métier : `App` branche les fournisseurs (store, horloge, i18n,
+ * notifications, actions) puis délègue à `AppShell`. L'ordre des fournisseurs
+ * suit leurs dépendances : la locale (`ui.locale`) est lue **avant** l'i18n, et
+ * `ActionsProvider` a besoin des notifications **et** du traducteur.
  */
-export function App() {
+export function App({ store, clock, useCases }: AppProps) {
   return (
-    <div className="app-shell">
-      <header className="app-header">
-        <p className="app-kicker">Phase 1 — Socle d’architecture</p>
-        <h1 className="app-title">Aron 36</h1>
-        <p className="app-lead">
-          Entraîneur de mémorisation des 36 questions d’Arthur Aron. Le contenu et les écrans
-          arrivent dans les phases suivantes.
-        </p>
-      </header>
+    <StoreProvider store={store}>
+      <ClockProvider clock={clock}>
+        <LocalizedTree useCases={useCases} />
+      </ClockProvider>
+    </StoreProvider>
+  );
+}
 
-      <main className="app-main">
-        <section className="panel" aria-labelledby="status-title">
-          <h2 id="status-title">Contrats gelés</h2>
-          <p>
-            Le domaine est pur, l’I/O est aux frontières. Cette page ne charge aucune progression et
-            n’écrit rien dans le navigateur.
-          </p>
-          <ul className="checklist">
-            <li>36 questions, 3 actes, 5 directions de drill</li>
-            <li>Ordonnanceur SRS déterministe, horloge et aléa injectés</li>
-            <li>Persistance locale versionnée, export et import JSON</li>
-          </ul>
-        </section>
-      </main>
+function LocalizedTree({ useCases }: { readonly useCases: UseCases }) {
+  const locale = useSelect((state) => state.ui.locale);
 
-      <footer className="app-footer">
-        <p>Application statique, hors ligne, sans compte et sans serveur.</p>
-      </footer>
-    </div>
+  // `lang` doit suivre la langue de l'interface (WCAG 3.1.1) : la déclaration
+  // statique d'`index.html` ne suffit plus dès que la locale est persistée.
+  useEffect(() => {
+    document.documentElement.lang = locale;
+  }, [locale]);
+
+  return (
+    <I18nProvider locale={locale}>
+      <ToastLayer>
+        <ActionsProvider useCases={useCases}>
+          <AppShell />
+        </ActionsProvider>
+      </ToastLayer>
+    </I18nProvider>
+  );
+}
+
+/** Les libellés de la région de notifications sont traduits, donc fournis ici. */
+function ToastLayer({ children }: { readonly children: ReactNode }) {
+  const t = useT();
+  return (
+    <ToastProvider label={t('toast.regionLabel')} closeLabel={t('toast.dismiss')}>
+      {children}
+    </ToastProvider>
   );
 }

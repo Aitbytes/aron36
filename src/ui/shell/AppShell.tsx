@@ -1,0 +1,123 @@
+import { selectLevel, selectStreak } from '@/application/store';
+import type { AppScreen } from '@/application/store';
+import { useLocalizedText, useT } from '@/i18n';
+import type { MessageKey } from '@/i18n';
+import {
+  CollectionScreen,
+  HomeScreen,
+  SettingsScreen,
+  StatsScreen,
+  TrainScreen,
+} from '@/ui/screens';
+import { Chip, IconButton, VisuallyHidden } from '@/ui/primitives';
+import { useActions, useAppState, useSelect } from '@/ui/store';
+
+import styles from './AppShell.module.css';
+
+/** Écrans de la navigation principale, dans l'ordre d'affichage. */
+const NAV_ITEMS = [
+  { screen: 'home', label: 'nav.home' },
+  { screen: 'train', label: 'nav.train' },
+  { screen: 'collection', label: 'nav.collection' },
+  { screen: 'stats', label: 'nav.stats' },
+  { screen: 'settings', label: 'nav.settings' },
+] as const satisfies readonly { readonly screen: AppScreen; readonly label: MessageKey }[];
+
+/**
+ * Coque de l'application : en-tête persistant, écran courant, navigation.
+ *
+ * Accessibilité :
+ * - lien d'évitement (« Aller au contenu ») en première position du DOM ;
+ * - `<header>`, `<main role="main">`, `<nav aria-label>` : points de repère ;
+ * - `aria-current="page"` sur l'onglet actif, jamais la couleur seule ;
+ * - navigation clavier complète (boutons natifs, ordre du DOM) ;
+ * - `focus-visible` net (styles globaux + tokens).
+ */
+export function AppShell() {
+  const t = useT();
+  const localize = useLocalizedText();
+  const state = useAppState();
+  const actions = useActions();
+  const level = useSelect(selectLevel);
+  const streak = useSelect(selectStreak);
+
+  return (
+    <div className={styles.shell}>
+      <a className={styles.skipLink} href="#main-content">
+        {t('app.skipToContent')}
+      </a>
+
+      <header className={styles.header}>
+        <div className={styles.identity}>
+          <p className={styles.appName}>{t('app.name')}</p>
+          <p className={styles.level}>{t('shell.level', { level: level.level })}</p>
+        </div>
+        <ul className={styles.stats}>
+          <li>
+            <Chip tone="accent">{localize(level.title)}</Chip>
+          </li>
+          <li>{t('shell.xpTotal', { xp: state.progress.player.totalXp })}</li>
+          <li>{t('shell.streak', { count: streak.current })}</li>
+        </ul>
+        <div>
+          <span aria-live="polite">
+            {state.ui.busy ? <VisuallyHidden>{t('shell.busy')}</VisuallyHidden> : null}
+          </span>
+          <IconButton label={t('shell.openSettings')} onClick={() => actions.navigate('settings')}>
+            <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" focusable="false">
+              <circle cx="12" cy="12" r="3.2" fill="currentColor" />
+              <path
+                d="M12 2.6v2.2M12 19.2v2.2M4.9 4.9l1.6 1.6M17.5 17.5l1.6 1.6M2.6 12h2.2M19.2 12h2.2M4.9 19.1l1.6-1.6M17.5 6.5l1.6-1.6"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.8"
+                strokeLinecap="round"
+              />
+            </svg>
+          </IconButton>
+        </div>
+      </header>
+
+      <div className={styles.body}>
+        <main id="main-content" role="main" tabIndex={-1} className={styles.main}>
+          <CurrentScreen screen={state.ui.screen} />
+        </main>
+
+        <nav className={styles.nav} aria-label={t('nav.label')}>
+          {NAV_ITEMS.map((item) => {
+            const current = state.ui.screen === item.screen;
+            return (
+              <button
+                key={item.screen}
+                type="button"
+                className={styles.navItem}
+                aria-current={current ? 'page' : undefined}
+                onClick={() => actions.navigate(item.screen)}
+              >
+                {t(item.label)}
+              </button>
+            );
+          })}
+        </nav>
+      </div>
+    </div>
+  );
+}
+
+/** Écran courant : le store est la seule source de navigation (aucun routeur). */
+function CurrentScreen({ screen }: { readonly screen: AppScreen }) {
+  switch (screen) {
+    case 'home':
+      return <HomeScreen />;
+    case 'train':
+      return <TrainScreen />;
+    case 'collection':
+      return <CollectionScreen />;
+    case 'stats':
+      return <StatsScreen />;
+    case 'settings':
+      return <SettingsScreen />;
+    case 'grand-oral':
+      return <TrainScreen />;
+  }
+}

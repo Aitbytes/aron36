@@ -1,0 +1,78 @@
+.button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  min-inline-size: var(--target-min-size);
+  min-block-size: var(--target-min-size);
+  padding-inline: var(--space-4);
+  border: 1px solid transparent;
+  border-radius: var(--radius-pill);
+  background: var(--color-surface-raised);
+  color: var(--color-text);
+  font: inherit;
+  font-weight: 600;
+  text-align: center;
+  cursor: pointer;
+}
+
+.button:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.button:not(:disabled):hover {
+  filter: brightness(1.08);
+}
+
+.primary {
+  background: var(--gradient-brand);
+  color: var(--color-bg);
+}
+
+.secondary {
+  background: transparent;
+  border-color: var(--color-border);
+}
+
+.ghost {
+  background: transparent;
+}
+
+.danger {
+  background: var(--color-danger);
+  color: var(--color-bg);
+}
+
+.sm {
+  padding-inline: var(--space-3);
+  font-size: var(--text-sm);
+}
+
+.md {
+  font-size: var(--text-md);
+}
+
+.lg {
+  min-block-size: 3rem;
+  padding-inline: var(--space-5);
+  font-size: var(--text-lg);
+}
+
+.block {
+  inline-size: 100%;
+}
+
+.label {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .button {
+    transition:
+      filter var(--motion-fast) var(--easing-standard),
+      background-color var(--motion-fast) var(--easing-standard);
+  }
+}
