@@ -109,6 +109,11 @@ function expectedAnswerText(
     : localize(answer.text);
 }
 
+/** Vrai quand le nœud (ou l'un de ses ancêtres) est une boîte de dialogue. */
+function isWithinDialog(node: EventTarget | Element | null): boolean {
+  return node instanceof Element && node.closest('[role="dialog"]') !== null;
+}
+
 /** Signataire de soumission d'une note, partagé entre le parent et l'étape. */
 type SubmitGrade = (
   grade: ReviewGrade,
@@ -263,10 +268,17 @@ export function TrainScreen() {
       return undefined;
     }
     const handler = (event: KeyboardEvent): void => {
-      if (event.key === 'Enter') {
-        event.preventDefault();
-        actions.dismissFeedback();
+      if (event.key !== 'Enter') {
+        return;
       }
+      // Sous une modale (abandon, réinitialisation…), `Entrée` appartient au
+      // dialogue : elle ne doit jamais fermer le feedback ni avancer la session
+      // (revue Phase 4). On regarde l'origine **et** le focus courant.
+      if (isWithinDialog(event.target) || isWithinDialog(document.activeElement)) {
+        return;
+      }
+      event.preventDefault();
+      actions.dismissFeedback();
     };
     document.addEventListener('keydown', handler);
     return () => {

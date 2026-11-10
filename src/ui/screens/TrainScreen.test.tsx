@@ -327,6 +327,29 @@ describe('TrainScreen — abandon', () => {
   });
 });
 
+describe('TrainScreen — raccourci Entrée et modale', () => {
+  it('ignore Entrée quand la boîte d’abandon est ouverte', async () => {
+    const user = userEvent.setup();
+    const harness = createUiHarness();
+    startSession(harness, { mode: 'learning', questionIds: [7, 8], maxItems: 2 });
+    renderTrain(harness);
+
+    await user.click(screen.getByRole('button', { name: 'Voir la réponse' }));
+    await user.click(screen.getByRole('button', { name: GRADE_LABELS.good }));
+    expect(screen.getByRole('heading', { name: 'Correction' })).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Abandonner' }));
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+
+    await user.keyboard('{Enter}');
+
+    // `Entrée` aurait refermé le feedback et fait avancer la session : sous la
+    // modale, le raccourci global est neutralisé.
+    expect(harness.store.getState().ui.feedback).not.toBeNull();
+    expect(screen.getByRole('heading', { name: 'Correction' })).toBeInTheDocument();
+  });
+});
+
 describe('TrainScreen — refus', () => {
   it('affiche un message traduit et laisse la session utilisable', async () => {
     const user = userEvent.setup();
