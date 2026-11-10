@@ -5,9 +5,11 @@ import type { MessageKey } from '@/i18n';
 import {
   CollectionScreen,
   HomeScreen,
+  ProgressScreen,
   SettingsScreen,
   StatsScreen,
   TrainScreen,
+  UnderConstructionScreen,
 } from '@/ui/screens';
 import { Chip, IconButton, VisuallyHidden } from '@/ui/primitives';
 import { useActions, useAppState, useSelect } from '@/ui/store';
@@ -80,7 +82,10 @@ export function AppShell() {
 
       <div className={styles.body}>
         <main id="main-content" role="main" tabIndex={-1} className={styles.main}>
-          <CurrentScreen screen={state.ui.screen} />
+          <CurrentScreen
+            screen={state.ui.screen}
+            hasActiveSession={state.session !== null && state.session.phase !== 'completed'}
+          />
         </main>
 
         <nav className={styles.nav} aria-label={t('nav.label')}>
@@ -104,13 +109,26 @@ export function AppShell() {
   );
 }
 
-/** Écran courant : le store est la seule source de navigation (aucun routeur). */
-function CurrentScreen({ screen }: { readonly screen: AppScreen }) {
+/**
+ * Écran courant : le store est la seule source de navigation (aucun routeur).
+ *
+ * L'onglet « Entraînement » a deux visages : la carte de progression quand
+ * aucune session n'est en cours, l'écran de jeu dès qu'une session est active.
+ * C'est ce qui rend le parcours « choisir un acte → jouer → bilan » continu,
+ * sans ajouter une entrée de navigation.
+ */
+function CurrentScreen({
+  screen,
+  hasActiveSession,
+}: {
+  readonly screen: AppScreen;
+  readonly hasActiveSession: boolean;
+}) {
   switch (screen) {
     case 'home':
       return <HomeScreen />;
     case 'train':
-      return <TrainScreen />;
+      return hasActiveSession ? <TrainScreen /> : <ProgressScreen />;
     case 'collection':
       return <CollectionScreen />;
     case 'stats':
@@ -118,6 +136,17 @@ function CurrentScreen({ screen }: { readonly screen: AppScreen }) {
     case 'settings':
       return <SettingsScreen />;
     case 'grand-oral':
-      return <TrainScreen />;
+      return <GrandOralScreen />;
   }
+}
+
+/** Grand Oral (examen final chronométré) — livré en Phase 5. */
+function GrandOralScreen() {
+  const t = useT();
+  return (
+    <UnderConstructionScreen
+      title={t('grandOral.title')}
+      description={t('grandOral.description')}
+    />
+  );
 }
