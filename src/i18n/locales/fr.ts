@@ -197,6 +197,7 @@ export const frMessages = {
   'train.channel.written': 'Par écrit',
   'train.channel.spoken': 'À voix haute',
   'train.channel.hint': 'L’oral est compté dans le bilan ; la note ne change pas.',
+  'train.shortcuts.asking': 'Raccourcis : Espace révèle la réponse, H affiche un indice.',
   'train.expected.title': 'Réponse attendue',
   'train.grade.title': 'Comment ça s’est passé ?',
   'train.grade.again': 'Je ne savais pas',

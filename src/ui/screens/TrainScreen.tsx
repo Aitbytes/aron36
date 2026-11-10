@@ -124,6 +124,22 @@ function isWithinDialog(node: EventTarget | Element | null): boolean {
   return node instanceof Element && node.closest('[role="dialog"]') !== null;
 }
 
+/**
+ * Vrai quand le focus est dans un champ de saisie.
+ *
+ * Les raccourcis d'une lettre (`H`) ou d'une espace (`Espace`) doivent alors
+ * laisser le clavier au texte : sinon on ne pourrait plus écrire « la hache ».
+ */
+function isTextEntryTarget(node: EventTarget | null): boolean {
+  if (!(node instanceof HTMLElement)) {
+    return false;
+  }
+  if (node.isContentEditable) {
+    return true;
+  }
+  return node.tagName === 'INPUT' || node.tagName === 'TEXTAREA' || node.tagName === 'SELECT';
+}
+
 /** Signataire de soumission d'une note, partagé entre le parent et l'étape. */
 type SubmitGrade = (
   grade: ReviewGrade,
@@ -523,6 +539,50 @@ function ItemStage({
     [grade, handleReveal, item.isPretest, revealed],
   );
 
+  // Raccourcis documentés (ARCHITECTURE §11) : `Espace` révèle la réponse,
+  // `H` affiche l'indice suivant. Inactifs sous une modale, dans un champ de
+  // saisie (on doit pouvoir taper une espace ou un « h »), une fois la réponse
+  // révélée, et jamais en prétest (L18).
+  useEffect(() => {
+    const handler = (event: KeyboardEvent): void => {
+      if (event.ctrlKey || event.metaKey || event.altKey) {
+        return;
+      }
+      if (
+        isTextEntryTarget(event.target) ||
+        isWithinDialog(event.target) ||
+        isWithinDialog(document.activeElement)
+      ) {
+        return;
+      }
+      const isSpace = event.key === ' ' || event.code === 'Space';
+      if (isSpace && item.exerciseKind === 'production') {
+        if (revealed) {
+          return;
+        }
+        event.preventDefault();
+        handleReveal();
+        return;
+      }
+      if (event.key === 'h' || event.key === 'H') {
+        const canRevealHint =
+          !revealed &&
+          !item.isPretest &&
+          item.hints.length > 0 &&
+          session.revealedHints < item.hints.length;
+        if (!canRevealHint) {
+          return;
+        }
+        event.preventDefault();
+        onRevealHint();
+      }
+    };
+    document.addEventListener('keydown', handler);
+    return () => {
+      document.removeEventListener('keydown', handler);
+    };
+  }, [handleReveal, item, onRevealHint, revealed, session.revealedHints]);
+
   // Raccourcis `1`–`4` pendant la notation.
   useEffect(() => {
     if (!revealed || item.exerciseKind !== 'production') {
@@ -698,6 +758,7 @@ function ItemStage({
               {t('train.reveal')}
             </Button>
           </div>
+          <p className={styles.shortcut}>{t('train.shortcuts.asking')}</p>
         </form>
       )}
     </Card>

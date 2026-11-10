@@ -184,6 +184,7 @@ export const enMessages: Record<MessageKey, string> = {
   'train.channel.written': 'Written',
   'train.channel.spoken': 'Out loud',
   'train.channel.hint': 'Spoken answers count in the summary; the grade is unchanged.',
+  'train.shortcuts.asking': 'Shortcuts: Space reveals the answer, H shows a hint.',
   'train.expected.title': 'Expected answer',
   'train.grade.title': 'How did it go?',
   'train.grade.again': 'I did not know',

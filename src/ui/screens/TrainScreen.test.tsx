@@ -420,6 +420,50 @@ describe('TrainScreen — abandon', () => {
   });
 });
 
+describe('TrainScreen — raccourcis documentés (ARCHITECTURE §11)', () => {
+  it('Espace révèle la réponse et H affiche un indice', async () => {
+    const user = userEvent.setup();
+    const harness = createUiHarness();
+    startSession(harness, { mode: 'learning', questionIds: [7], maxItems: 1 });
+    renderTrain(harness);
+
+    await user.keyboard('h');
+    expect(screen.getByText('Indices utilisés : 1')).toBeInTheDocument();
+
+    await user.keyboard(' ');
+    expect(screen.getByRole('heading', { name: 'Réponse attendue' })).toBeInTheDocument();
+  });
+
+  it('laisse le clavier au texte dans un champ de saisie', async () => {
+    const user = userEvent.setup();
+    const harness = createUiHarness();
+    startSession(harness, { mode: 'learning', questionIds: [7], maxItems: 1 });
+    renderTrain(harness);
+
+    const textarea = screen.getByLabelText('Ta réponse');
+    await user.click(textarea);
+    await user.keyboard('h');
+    await user.keyboard(' ');
+
+    expect(textarea).toHaveValue('h ');
+    expect(screen.queryByRole('heading', { name: 'Réponse attendue' })).toBeNull();
+    expect(screen.queryByText('Indices utilisés : 1')).toBeNull();
+  });
+
+  it('H reste inerte une fois la réponse révélée', async () => {
+    const user = userEvent.setup();
+    const harness = createUiHarness();
+    startSession(harness, { mode: 'learning', questionIds: [7], maxItems: 1 });
+    renderTrain(harness);
+
+    await user.keyboard(' ');
+    expect(screen.getByRole('heading', { name: 'Réponse attendue' })).toBeInTheDocument();
+
+    await user.keyboard('h');
+    expect(screen.queryByRole('heading', { name: 'Indices' })).toBeNull();
+  });
+});
+
 describe('TrainScreen — raccourci Entrée et modale', () => {
   it('ignore Entrée quand la boîte d’abandon est ouverte', async () => {
     const user = userEvent.setup();
