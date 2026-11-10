@@ -611,6 +611,9 @@ function ItemStage({
           <h2 id="options-title" className={styles.stepTitle}>
             {t('train.discrimination.title')}
           </h2>
+          <p>
+            <Chip tone="accent">{t('train.discrimination.badge')}</Chip>
+          </p>
           <Stack gap={3}>
             {item.options.map((option) => (
               <Button

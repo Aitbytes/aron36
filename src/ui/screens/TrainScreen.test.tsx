@@ -5,8 +5,12 @@ import { describe, expect, it, vi } from 'vitest';
 import { makeDueCard, makeProgress } from '@/application/store/test-fixtures';
 import { UseCaseRejection } from '@/application/usecases';
 import type { UseCases } from '@/application/usecases';
+import { findSeedStartingWithDiscrimination } from '@/application/usecases/test-doubles';
+import { QUESTION_CATALOG } from '@/domain/questions';
 import { sessionBuilder, sessionEngine } from '@/domain/session';
 import { makeContext, makeRequest } from '@/domain/session/test-fixtures';
+import type { QuestionId } from '@/domain/shared/types';
+import type { CardState } from '@/domain/srs/types';
 import type {
   AnswerChannel,
   SessionItem,
@@ -59,6 +63,48 @@ function directionState(direction: DrillDirection): SessionState {
   );
   if (!built.ok) {
     throw new Error(`plan de fixture invalide : ${built.failure}`);
+  }
+  return sessionEngine.start(built.plan, FIXTURE_NOW);
+}
+
+/** Session dont le premier item est un QCM (drill de reconnaissance, L1). */
+function discriminationState(): SessionState {
+  const cards = new Map<QuestionId, CardState>();
+  for (let questionId = 1; questionId <= 12; questionId += 1) {
+    cards.set(questionId, {
+      questionId,
+      phase: 'review',
+      dueAt: 0,
+      intervalDays: 3,
+      stabilityDays: 3,
+      learningStep: 0,
+      difficulty: 5,
+      reps: 3,
+      lapses: 0,
+      consecutiveSuccesses: 2,
+      lastReviewedAt: 0,
+      lastGrade: 'good',
+    });
+  }
+  const built = sessionBuilder.build(
+    makeRequest({
+      mode: 'learning',
+      sessionId: 'discrimination-ui',
+      seed: findSeedStartingWithDiscrimination(),
+      now: FIXTURE_NOW,
+      maxItems: 5,
+    }),
+    {
+      catalog: QUESTION_CATALOG,
+      cards,
+      hooks: [],
+      recentLogs: [],
+      unlockedActIds: [1],
+      masteredActIds: [],
+    },
+  );
+  if (!built.ok) {
+    throw new Error(`plan de discrimination invalide : ${built.failure}`);
   }
   return sessionEngine.start(built.plan, FIXTURE_NOW);
 }
@@ -134,6 +180,20 @@ describe('TrainScreen — rendu des directions de drill', () => {
     expect(screen.getByText('Quel numéro ?')).toBeInTheDocument();
     expect(screen.getByLabelText('Numéro de la question')).toHaveAttribute('type', 'number');
     expect(screen.getByLabelText('Numéro de la question')).toHaveAttribute('inputmode', 'numeric');
+  });
+});
+
+describe('TrainScreen — QCM explicitement étiqueté', () => {
+  it('annonce un drill de reconnaissance, pas une simple question', () => {
+    const harness = createUiHarness();
+    plantState(harness, discriminationState());
+    renderTrain(harness);
+
+    expect(firstItem(harness).exerciseKind).toBe('discrimination');
+    expect(
+      screen.getByRole('heading', { name: 'Reconnaissance : choisis la bonne question' }),
+    ).toBeInTheDocument();
+    expect(screen.getByText('Drill de reconnaissance')).toBeInTheDocument();
   });
 });
 
