@@ -132,6 +132,10 @@ export function TrainScreen() {
   const state = useAppState();
   const toast = useToast();
   const progress = useSelect(selectSessionProgress);
+  // L'affichage et `aria-valuenow` parlent du **même** numéro de question : la
+  // barre porte le cran courant (1-based, borné à `total`), pas l'index 0-based.
+  const currentQuestionNumber =
+    progress === null ? 0 : Math.min(progress.index + 1, progress.total);
 
   const session = state.session;
   const feedback = state.ui.feedback;
@@ -303,15 +307,15 @@ export function TrainScreen() {
         <div className={styles.sessionProgress}>
           <p className={styles.sessionProgressText}>
             {t('train.progressText', {
-              current: Math.min(progress.index + 1, progress.total),
+              current: currentQuestionNumber,
               total: progress.total,
             })}
           </p>
           <ProgressBar
-            value={progress.index}
+            value={currentQuestionNumber}
             max={progress.total}
             label={t('train.progressLabel', {
-              current: progress.index,
+              current: currentQuestionNumber,
               total: progress.total,
             })}
           />

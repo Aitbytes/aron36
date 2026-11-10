@@ -254,9 +254,13 @@ describe('TrainScreen — notation (L12/L13)', () => {
     startSession(harness, { mode: 'learning', questionIds: [7, 8], maxItems: 2 });
     renderTrain(harness);
 
-    expect(
-      screen.getByRole('progressbar', { name: 'Progression de la session : 0 sur 2' }),
-    ).toBeInTheDocument();
+    const firstBar = screen.getByRole('progressbar', {
+      name: 'Progression de la session : 1 sur 2',
+    });
+    // Le texte et la barre portent le même numéro de question (a11y) : au cran
+    // 1, `aria-valuenow` vaut 1, plus 0.
+    expect(firstBar).toHaveAttribute('aria-valuenow', '1');
+    expect(firstBar).toHaveAttribute('aria-valuetext', '50 %');
     await user.click(screen.getByRole('button', { name: 'Voir la réponse' }));
     await user.click(screen.getByRole('button', { name: GRADE_LABELS.good }));
 
@@ -264,9 +268,10 @@ describe('TrainScreen — notation (L12/L13)', () => {
     await user.click(screen.getByRole('button', { name: 'Continuer' }));
 
     expect(screen.queryByRole('heading', { name: 'Correction' })).toBeNull();
-    expect(
-      screen.getByRole('progressbar', { name: 'Progression de la session : 1 sur 2' }),
-    ).toBeInTheDocument();
+    const secondBar = screen.getByRole('progressbar', {
+      name: 'Progression de la session : 2 sur 2',
+    });
+    expect(secondBar).toHaveAttribute('aria-valuenow', '2');
   });
 });
 
