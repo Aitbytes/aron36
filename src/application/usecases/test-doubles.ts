@@ -171,6 +171,14 @@ export class FixedClock implements ClockPort {
     return `${pad(year, 4)}-${pad(month)}-${pad(day)}`;
   }
 
+  localHourOfDay(at: EpochMs): number {
+    // Décalage constant : suffisant pour un fuseau sans transition dans la
+    // fenêtre testée. Les jours de changement d'heure se testent sur
+    // `SystemClock` (qui s'appuie sur `Intl`).
+    const msOfDay = (((at + this.offsetMs) % DAY_MS) + DAY_MS) % DAY_MS;
+    return Math.floor(msOfDay / HOUR_MS);
+  }
+
   startOfLocalDay(dayKey: DayKey): EpochMs {
     const year = Number(dayKey.slice(0, 4));
     const month = Number(dayKey.slice(5, 7));

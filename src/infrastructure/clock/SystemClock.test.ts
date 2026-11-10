@@ -48,6 +48,20 @@ describe('SystemClock', () => {
     }
   });
 
+  it('donne l’heure civile locale exacte les deux jours de changement d’heure (Europe/Paris)', () => {
+    const clock = new SystemClock({ timeZone: PARIS });
+    // 25/10/2026 : retour à l'heure d'hiver. 17:30Z = 18:30 locale (UTC+1).
+    expect(clock.localHourOfDay(Date.parse('2026-10-25T17:30:00Z'))).toBe(18);
+    // 29/03/2026 : passage à l'heure d'été. 17:30Z = 19:30 locale (UTC+2).
+    expect(clock.localHourOfDay(Date.parse('2026-03-29T17:30:00Z'))).toBe(19);
+    // Bornes de journée : 04:59, 05:00, 12:00, 19:00, 23:00 locale (été, UTC+2).
+    expect(clock.localHourOfDay(Date.parse('2026-06-10T02:59:00Z'))).toBe(4);
+    expect(clock.localHourOfDay(Date.parse('2026-06-10T03:00:00Z'))).toBe(5);
+    expect(clock.localHourOfDay(Date.parse('2026-06-10T10:00:00Z'))).toBe(12);
+    expect(clock.localHourOfDay(Date.parse('2026-06-10T17:00:00Z'))).toBe(19);
+    expect(clock.localHourOfDay(Date.parse('2026-06-10T21:00:00Z'))).toBe(23);
+  });
+
   it('honore un fuseau configurable (UTC)', () => {
     const utc = new SystemClock({ timeZone: 'UTC' });
     expect(utc.timeZone).toBe('UTC');

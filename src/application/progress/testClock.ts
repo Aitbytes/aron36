@@ -13,6 +13,9 @@ export function createFixedClock(fixed: EpochMs): ClockPort {
     dayKey(at: EpochMs): DayKey {
       return new Date(at).toISOString().slice(0, 10);
     },
+    localHourOfDay(at: EpochMs): number {
+      return new Date(at).getUTCHours();
+    },
     startOfLocalDay(dayKey: DayKey): EpochMs {
       return Date.parse(`${dayKey}T00:00:00Z`);
     },

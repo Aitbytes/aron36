@@ -59,6 +59,14 @@ export class SystemClock implements ClockPort {
     return `${year}-${month}-${day}`;
   }
 
+  localHourOfDay(at: EpochMs): number {
+    // `Intl` gère la base tz du moteur : l'heure est exacte même les jours de
+    // changement d'heure. `% 24` neutralise le cas `hour12: false` rendant
+    // minuit comme « 24 ».
+    const parts = this.localPartsFormatter.formatToParts(new Date(at));
+    return Number(partOf(parts, 'hour')) % 24;
+  }
+
   startOfLocalDay(dayKey: DayKey): EpochMs {
     const match = DAY_KEY_PATTERN.exec(dayKey);
     if (match === null) {

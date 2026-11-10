@@ -2,6 +2,9 @@ import { describe, expect, it } from 'vitest';
 
 import { questGenerator, QUEST_DEFINITIONS } from '@/domain/gamification';
 import type { DayKey, RandomSeed, ReviewGrade } from '@/domain/shared/types';
+// Horloge réelle en test : c'est la seule à gérer les transitions d'heure via
+// `Intl` (le double `FixedClock` a un décalage constant).
+import { SystemClock } from '@/infrastructure';
 import { resolveSessionWindow } from './session-window';
 import { createHarness, NOW, seedFreshProgress } from './test-doubles';
 import type { TestHarness } from './test-doubles';
@@ -89,6 +92,35 @@ describe('fenêtres de journée déduites de ClockPort (L17)', () => {
     expect(resolveSessionWindow(clock, NOW + 15 * 3_600_000)).toBe('night'); // 23 h
     expect(resolveSessionWindow(clock, NOW - 3 * 3_600_000)).toBe('morning'); // 5 h pile
     expect(resolveSessionWindow(clock, NOW - 4 * 3_600_000)).toBe('night'); // 4 h
+  });
+
+  it('classe correctement les deux jours de changement d’heure, sans décalage d’une heure (majeur A6)', () => {
+    const clock = new SystemClock({ timeZone: 'Europe/Paris', now: () => 0 });
+    // 25/10/2026 (retour à l'heure d'hiver) : 17:30Z = 18:30 locale. L'ancien
+    // calcul par écart à `startOfLocalDay` la classait `evening` : elle est
+    // `day` (18:30 < 19:00).
+    const fallBack = Date.parse('2026-10-25T17:30:00Z');
+    expect(clock.localHourOfDay(fallBack)).toBe(18);
+    expect(resolveSessionWindow(clock, fallBack)).toBe('day');
+    // 29/03/2026 (passage à l'heure d'été) : 17:30Z = 19:30 locale. L'ancien
+    // calcul la classait `day` : elle est `evening` (19:30 ≥ 19:00).
+    const springForward = Date.parse('2026-03-29T17:30:00Z');
+    expect(clock.localHourOfDay(springForward)).toBe(19);
+    expect(resolveSessionWindow(clock, springForward)).toBe('evening');
+  });
+
+  it('conserve des bornes exactes (04:59 night, 05:00 morning, 12:00 day, 19:00 evening, 23:00 night)', () => {
+    const clock = new SystemClock({ timeZone: 'Europe/Paris', now: () => 0 });
+    const at = (hour: string, minute: string): number =>
+      Date.parse(`2026-06-10T${hour}:${minute}:00+02:00`);
+    expect(resolveSessionWindow(clock, at('04', '59'))).toBe('night');
+    expect(resolveSessionWindow(clock, at('05', '00'))).toBe('morning');
+    expect(resolveSessionWindow(clock, at('11', '59'))).toBe('morning');
+    expect(resolveSessionWindow(clock, at('12', '00'))).toBe('day');
+    expect(resolveSessionWindow(clock, at('18', '59'))).toBe('day');
+    expect(resolveSessionWindow(clock, at('19', '00'))).toBe('evening');
+    expect(resolveSessionWindow(clock, at('22', '59'))).toBe('evening');
+    expect(resolveSessionWindow(clock, at('23', '00'))).toBe('night');
   });
 
   it('ne fait progresser la quête du soir que sur une réponse du soir', () => {
