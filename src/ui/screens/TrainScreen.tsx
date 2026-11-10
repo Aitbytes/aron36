@@ -3,6 +3,7 @@ import type { FormEvent, RefObject } from 'react';
 
 import { selectSessionProgress } from '@/application/store';
 import type {
+  AnswerChannel,
   ErrorSignal,
   HintKind,
   SessionItem,
@@ -88,6 +89,15 @@ const CONFIDENCE_KEYS = {
 /** Échelle complète des jugements de confiance, dans l'ordre. */
 const CONFIDENCE_RATINGS: readonly ConfidenceRating[] = [1, 2, 3, 4, 5];
 
+/** Canaux de réponse proposés avant notation (L8) : écrit ou à voix haute. */
+const CHANNELS = ['written', 'spoken'] as const satisfies readonly AnswerChannel[];
+
+/** Libellés des canaux proposés. */
+const CHANNEL_KEYS = {
+  written: 'train.channel.written',
+  spoken: 'train.channel.spoken',
+} as const satisfies Readonly<Record<(typeof CHANNELS)[number], MessageKey>>;
+
 /** Traduction du signal d'erreur du feedback correctif (L13). */
 const ERROR_KEYS = {
   none: 'train.feedback.signal.none',
@@ -120,6 +130,7 @@ type SubmitGrade = (
   confidence: ConfidenceRating | null,
   responseTimeMs: number,
   hintsUsed: number,
+  channel: AnswerChannel,
 ) => void;
 
 /**
@@ -165,7 +176,7 @@ export function TrainScreen() {
   );
 
   const submitGrade = useCallback<SubmitGrade>(
-    (grade, confidence, responseTimeMs, hintsUsed) => {
+    (grade, confidence, responseTimeMs, hintsUsed, channel) => {
       if (session === null || item === null) {
         return;
       }
@@ -176,7 +187,7 @@ export function TrainScreen() {
         confidence: requiresConfidence ? confidence : null,
         responseTimeMs,
         hintsUsed,
-        channel: 'written',
+        channel,
       });
       if (!result.ok) {
         reportFailure(result.reason);
@@ -448,6 +459,7 @@ function ItemStage({
   const spokenRef = useRef(false);
 
   const [confidence, setConfidence] = useState<ConfidenceRating | null>(null);
+  const [channel, setChannel] = useState<AnswerChannel>('written');
   const [answerText, setAnswerText] = useState('');
   const [numberText, setNumberText] = useState('');
   const [answerShown, setAnswerShown] = useState(false);
@@ -461,9 +473,10 @@ function ItemStage({
         confidence,
         Math.max(0, clock.now() - shownAtRef.current),
         session.revealedHints,
+        channel,
       );
     },
-    [clock, confidence, onSubmit, session.revealedHints],
+    [channel, clock, confidence, onSubmit, session.revealedHints],
   );
 
   // L8 : la question attendue est lue **à la révélation** — jamais avant, sinon
@@ -617,6 +630,23 @@ function ItemStage({
             <span className={styles.label}>{t('train.feedback.mentalImage')}</span>{' '}
             {localize(item.mentalImage)}
           </p>
+          <fieldset className={styles.channel}>
+            <legend className={styles.label}>{t('train.channel.title')}</legend>
+            <Inline gap={2} wrap>
+              {CHANNELS.map((option) => (
+                <Button
+                  key={option}
+                  type="button"
+                  variant={channel === option ? 'primary' : 'secondary'}
+                  aria-pressed={channel === option}
+                  onClick={() => setChannel(option)}
+                >
+                  {t(CHANNEL_KEYS[option])}
+                </Button>
+              ))}
+            </Inline>
+            <p className={styles.muted}>{t('train.channel.hint')}</p>
+          </fieldset>
           <div className={styles.grades}>
             <h2 className={styles.stepTitle}>{t('train.grade.title')}</h2>
             <Inline gap={3} wrap>

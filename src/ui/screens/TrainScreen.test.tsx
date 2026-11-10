@@ -7,7 +7,12 @@ import { UseCaseRejection } from '@/application/usecases';
 import type { UseCases } from '@/application/usecases';
 import { sessionBuilder, sessionEngine } from '@/domain/session';
 import { makeContext, makeRequest } from '@/domain/session/test-fixtures';
-import type { SessionItem, SessionState, SessionSummary } from '@/domain/session/types';
+import type {
+  AnswerChannel,
+  SessionItem,
+  SessionState,
+  SessionSummary,
+} from '@/domain/session/types';
 import type { DrillDirection, ReviewGrade } from '@/domain/shared/types';
 import { createUiHarness, TestProviders } from '@/test/uiHarness';
 import type { UiHarness } from '@/test/uiHarness';
@@ -378,6 +383,57 @@ describe('TrainScreen — refus', () => {
     ).toBeGreaterThan(0);
     // La notation reste disponible : la session n’est pas cassée.
     expect(screen.getByRole('button', { name: GRADE_LABELS.hard })).toBeEnabled();
+  });
+});
+
+describe('TrainScreen — canal de réponse (L8)', () => {
+  it('propose écrit / à voix haute après révélation et transmet le canal', async () => {
+    const user = userEvent.setup();
+    const harness = createUiHarness();
+    startSession(harness, { mode: 'learning', questionIds: [7], maxItems: 1 });
+    const channels: AnswerChannel[] = [];
+    const useCases: UseCases = {
+      ...harness.useCases,
+      submitAnswer: {
+        execute: (input) => {
+          channels.push(input.channel);
+          return harness.useCases.submitAnswer.execute(input);
+        },
+      },
+    };
+    renderTrain(harness, useCases);
+
+    // Le canal n'est demandé qu'à la notation, pas pendant la réponse.
+    expect(screen.queryByRole('button', { name: 'À voix haute' })).toBeNull();
+    await user.click(screen.getByRole('button', { name: 'Voir la réponse' }));
+
+    await user.click(screen.getByRole('button', { name: 'À voix haute' }));
+    await user.click(screen.getByRole('button', { name: GRADE_LABELS.good }));
+
+    expect(channels).toEqual(['spoken']);
+    expect(harness.store.getState().session?.answers[0]?.channel).toBe('spoken');
+  });
+
+  it('déclare « par écrit » par défaut, sans choix explicite', async () => {
+    const user = userEvent.setup();
+    const harness = createUiHarness();
+    startSession(harness, { mode: 'learning', questionIds: [7], maxItems: 1 });
+    const channels: AnswerChannel[] = [];
+    const useCases: UseCases = {
+      ...harness.useCases,
+      submitAnswer: {
+        execute: (input) => {
+          channels.push(input.channel);
+          return harness.useCases.submitAnswer.execute(input);
+        },
+      },
+    };
+    renderTrain(harness, useCases);
+
+    await user.click(screen.getByRole('button', { name: 'Voir la réponse' }));
+    await user.click(screen.getByRole('button', { name: GRADE_LABELS.good }));
+
+    expect(channels).toEqual(['written']);
   });
 });
 
