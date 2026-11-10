@@ -92,6 +92,31 @@ export interface SubmitAnswerInput {
   readonly channel: AnswerChannel;
 }
 
+/**
+ * Entrée de révélation d'un indice (L9).
+ *
+ * L'état de session vit dans le cas d'usage (`runs`) : l'UI ne peut pas le
+ * produire elle-même, d'où ce geste explicite (revue Phase 3, majeur A8).
+ */
+export interface RevealHintInput {
+  readonly sessionId: SessionId;
+}
+
+/** Sortie de révélation d'indice : le nouvel état du moteur. */
+export interface RevealHintOutput {
+  readonly state: SessionState;
+}
+
+/** Entrée de révélation de la réponse (L9) : passe en phase `revealed`. */
+export interface RevealAnswerInput {
+  readonly sessionId: SessionId;
+}
+
+/** Sortie de révélation de réponse : le nouvel état du moteur. */
+export interface RevealAnswerOutput {
+  readonly state: SessionState;
+}
+
 /** Sortie de soumission : tout ce que l'UI et la persistance doivent connaître. */
 export interface SubmitAnswerOutput {
   readonly session: SessionState;
@@ -231,6 +256,8 @@ export interface UseCases {
   readonly submitAnswer: UseCase<SubmitAnswerInput, SubmitAnswerOutput>;
   readonly finishSession: UseCase<FinishSessionInput, FinishSessionOutput>;
   readonly abandonSession: UseCase<AbandonSessionInput, AbandonSessionOutput>;
+  readonly revealHint: UseCase<RevealHintInput, RevealHintOutput>;
+  readonly revealAnswer: UseCase<RevealAnswerInput, RevealAnswerOutput>;
   readonly saveHook: UseCase<SaveHookInput, SaveHookOutput>;
   readonly importProgress: UseCase<ImportProgressInput, ImportProgressOutput>;
   readonly exportProgress: UseCase<void, ExportProgressOutput>;

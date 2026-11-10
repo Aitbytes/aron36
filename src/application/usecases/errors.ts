@@ -24,6 +24,8 @@ export type UseCaseRejectionReason =
   | 'session-submission-refused'
   | 'session-build-refused'
   | 'hook-refused'
+  /** Aucun indice à révéler (politique `disabled`, épuisé, ou hors phase `asking`). */
+  | 'hint-unavailable'
   | 'progress-unavailable'
   /** `future-version` : aucune écriture ni réinitialisation autorisée (Phase 1). */
   | 'progress-protected';
@@ -34,6 +36,7 @@ export type UseCaseRejectionDetail =
   | { readonly kind: 'session-id'; readonly sessionId: string }
   | { readonly kind: 'build'; readonly failure: SessionBuildFailure }
   | { readonly kind: 'transition'; readonly failure: SessionTransitionFailure }
+  | { readonly kind: 'hint'; readonly sessionId: string }
   | { readonly kind: 'submission'; readonly failure: SessionSubmitFailure }
   | { readonly kind: 'hook'; readonly error: HookError }
   | { readonly kind: 'progress'; readonly error: ProgressError };

@@ -54,6 +54,10 @@ import type {
   ImportProgressInput,
   ImportProgressOutput,
   ResetProgressOutput,
+  RevealAnswerInput,
+  RevealAnswerOutput,
+  RevealHintInput,
+  RevealHintOutput,
   SaveHookInput,
   SaveHookOutput,
   StartSessionInput,
@@ -181,19 +185,24 @@ export function createUseCases(
 
     // (a) L12 : la confiance est déclarée **avant** révélation ; le cas d'usage
     // enchaîne confiance → révélation → note, et propage tout refus du moteur.
+    // Si l'UI a déjà révélé la réponse via `revealAnswer`, l'état est en phase
+    // `revealed` : on ne rejoue ni confiance ni révélation (sinon `wrong-phase`).
     let working = run.state;
-    if (input.confidence !== null) {
-      const judged = sessionEngine.setConfidence(working, input.confidence);
-      if (!judged.ok) {
-        throw transitionRefused(judged.failure);
+    if (working.phase === 'asking') {
+      if (input.confidence !== null) {
+        const judged = sessionEngine.setConfidence(working, input.confidence);
+        if (!judged.ok) {
+          throw transitionRefused(judged.failure);
+        }
+        working = judged.state;
       }
-      working = judged.state;
+      const revealed = sessionEngine.revealAnswer(working);
+      if (!revealed.ok) {
+        throw transitionRefused(revealed.failure);
+      }
+      working = revealed.state;
     }
-    const revealed = sessionEngine.revealAnswer(working);
-    if (!revealed.ok) {
-      throw transitionRefused(revealed.failure);
-    }
-    const submitted = sessionEngine.submitAnswer(revealed.state, {
+    const submitted = sessionEngine.submitAnswer(working, {
       itemId: input.itemId,
       grade: input.grade,
       responseTimeMs: input.responseTimeMs,
@@ -478,6 +487,35 @@ export function createUseCases(
     };
   }
 
+  /* ── 2 bis. revealHint / revealAnswer ─────────────────────────────────── */
+
+  function revealHint(input: RevealHintInput): RevealHintOutput {
+    const run = requireRun(input.sessionId);
+    const next = sessionEngine.revealNextHint(run.state);
+    // Le moteur ne signale pas d'échec (il renvoie l'état inchangé) : refus
+    // explicite quand rien n'a été révélé — politique `disabled`, indice
+    // épuisé ou phase non `asking` (L9).
+    if (next.revealedHints === run.state.revealedHints) {
+      throw new UseCaseRejection(
+        'hint-unavailable',
+        { kind: 'hint', sessionId: input.sessionId },
+        'Aucun indice disponible pour l’item courant (politique désactivée, épuisé ou hors phase).',
+      );
+    }
+    runs.set(input.sessionId, { state: next, productionXp: run.productionXp });
+    return { state: next };
+  }
+
+  function revealAnswer(input: RevealAnswerInput): RevealAnswerOutput {
+    const run = requireRun(input.sessionId);
+    const revealed = sessionEngine.revealAnswer(run.state);
+    if (!revealed.ok) {
+      throw transitionRefused(revealed.failure);
+    }
+    runs.set(input.sessionId, { state: revealed.state, productionXp: run.productionXp });
+    return { state: revealed.state };
+  }
+
   /* ── 3 bis. abandonSession ────────────────────────────────────────────── */
 
   function abandonSession(input: AbandonSessionInput): AbandonSessionOutput {
@@ -695,6 +733,8 @@ export function createUseCases(
     submitAnswer: { execute: submitAnswer },
     finishSession: { execute: finishSession },
     abandonSession: { execute: abandonSession },
+    revealHint: { execute: revealHint },
+    revealAnswer: { execute: revealAnswer },
     saveHook: { execute: saveHook },
     importProgress: { execute: importProgress },
     exportProgress: { execute: exportProgress },
