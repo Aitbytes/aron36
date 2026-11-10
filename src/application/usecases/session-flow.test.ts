@@ -247,7 +247,7 @@ describe('parcours complet — démarrer, répondre, clôturer', () => {
     }
   });
 
-  it('journalise la confiance fournie en mode learning (L12, majeur A5)', () => {
+  it('journalise la confiance fournie en mode learning (L12)', () => {
     const harness = createHarness();
     seedFreshProgress(harness);
     // `learning` n'exige pas de confiance : le moteur ne la recopiera pas dans

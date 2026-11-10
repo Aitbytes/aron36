@@ -92,7 +92,7 @@ describe('fenêtres de journée déduites de ClockPort (L17)', () => {
     expect(resolveSessionWindow(clock, NOW - 4 * 3_600_000)).toBe('night'); // 4 h
   });
 
-  it('classe correctement les deux jours de changement d’heure, sans décalage d’une heure (majeur A6)', () => {
+  it('classe correctement les deux jours de changement d’heure, sans décalage d’une heure (L17)', () => {
     const clock = new SystemClock({ timeZone: 'Europe/Paris', now: () => 0 });
     // 25/10/2026 (retour à l'heure d'hiver) : 17:30Z = 18:30 locale. L'ancien
     // calcul par écart à `startOfLocalDay` la classait `evening` : elle est
