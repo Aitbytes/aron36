@@ -28,7 +28,7 @@ import { createAppServices, createInitialProgress } from '@/application/bootstra
 import { QUESTION_CATALOG } from '@/domain/questions';
 import { sessionBuilder } from '@/domain/session';
 import type { CardState } from '@/domain/srs/types';
-import type { ProgressCodecLike } from './codec';
+import type { ProgressCodec } from '@/domain/progress/types';
 
 import { createUseCases } from './create-use-cases';
 import type { AppServices, UseCases } from './types';
@@ -334,7 +334,7 @@ function decodeInternal(raw: string): ProgressDecodeResult {
 }
 
 /** Codec de test : sérialisation JSON triviale + garde de version. */
-export function createStubProgressCodec(): ProgressCodecLike {
+export function createStubProgressCodec(): ProgressCodec {
   return {
     encode: (progress: PersistedProgress) => JSON.stringify(progress),
     decode: decodeInternal,
@@ -393,7 +393,7 @@ export interface TestHarness {
   readonly storage: MemoryStorage;
   readonly clock: FixedClock;
   readonly useCases: UseCases;
-  readonly codec: ProgressCodecLike;
+  readonly codec: ProgressCodec;
 }
 
 export interface HarnessOptions {

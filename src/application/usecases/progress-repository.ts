@@ -1,11 +1,10 @@
 import { STORAGE_CORRUPT_BACKUP_PREFIX } from '@/domain/progress/types';
-import type { ProgressError, PersistedProgress } from '@/domain/progress/types';
+import type { PersistedProgress, ProgressCodec, ProgressError } from '@/domain/progress/types';
 import type { EpochMs } from '@/domain/shared/types';
 
 import { readPersistedProgress, writeProgress } from './progress-loader';
 import { UseCaseRejection } from './errors';
 import type { AppServices } from './types';
-import type { ProgressCodecLike } from './codec';
 
 /**
  * Dépôt de progression des cas d'usage.
@@ -43,7 +42,7 @@ export interface ProgressRepository {
 /** Crée le dépôt lié aux services et au codec injectés. */
 export function createProgressRepository(
   services: AppServices,
-  codec: ProgressCodecLike,
+  codec: ProgressCodec,
   createInitial: (locale: 'fr' | 'en') => PersistedProgress,
 ): ProgressRepository {
   type Cache =
