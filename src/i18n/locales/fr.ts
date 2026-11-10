@@ -35,7 +35,7 @@ export const frMessages = {
   'shell.streak_other': 'Série de {count} jours',
   'shell.freezes': 'Gels disponibles : {count}',
   'shell.openSettings': 'Ouvrir les réglages',
-  'shell.loading': 'Chargement de votre progression…',
+  'shell.loading': 'Chargement de ta progression…',
   'shell.busy': 'Opération en cours',
 
   // ── Accueil ─────────────────────────────────────────────────────────────
@@ -60,12 +60,12 @@ export const frMessages = {
 
   // ── Récupération de données ─────────────────────────────────────────────
   'recovery.title': 'Progression protégée',
-  'recovery.protected': 'Vos données n’ont pas été écrasées : rien n’a été écrit.',
+  'recovery.protected': 'Tes données n’ont pas été écrasées : rien n’a été écrit.',
   'recovery.updateApp':
-    'Cette progression vient d’une version plus récente de l’application. Mettez l’application à jour, puis rechargez la page.',
+    'Cette progression vient d’une version plus récente de l’application. Mets l’application à jour, puis recharge la page.',
   'recovery.retryLater':
-    'Le stockage local est momentanément indisponible. Vos données sont intactes : réessayez plus tard.',
-  'recovery.rescue': 'Vous pouvez importer une sauvegarde JSON ou repartir d’un profil neuf.',
+    'Le stockage local est momentanément indisponible. Tes données sont intactes : réessaie plus tard.',
+  'recovery.rescue': 'Tu peux importer une sauvegarde JSON ou repartir d’un profil neuf.',
   'recovery.import': 'Importer une sauvegarde',
   'recovery.reset': 'Réinitialiser la progression',
   'recovery.resetTitle': 'Réinitialiser la progression ?',
@@ -97,7 +97,7 @@ export const frMessages = {
   'action.failure.hookRefused': 'Cette accroche ne peut pas être enregistrée.',
   'action.failure.hintUnavailable': 'Aucun indice n’est disponible pour cet item.',
   'action.failure.progressUnavailable':
-    'La progression est indisponible : passez par la récupération de données.',
+    'La progression est indisponible : passe par la récupération de données.',
   'action.failure.progressProtected':
     'Progression d’une version plus récente : aucune écriture n’est autorisée.',
   'action.failure.importFailed': 'Le fichier de sauvegarde est illisible.',
@@ -109,9 +109,9 @@ export const frMessages = {
   'toast.dismiss': 'Fermer la notification',
   'toast.writeFailed.title': 'Sauvegarde impossible',
   'toast.writeFailed.body':
-    'Votre progression reste valable dans cette session (code {code}). Pensez à exporter une sauvegarde.',
+    'Ta progression reste valable dans cette session (code {code}). Pense à exporter une sauvegarde.',
   'toast.importDone.title': 'Sauvegarde importée',
-  'toast.importDone.body': 'Votre progression a été remplacée par la sauvegarde.',
+  'toast.importDone.body': 'Ta progression a été remplacée par la sauvegarde.',
   'toast.importFailed.title': 'Import impossible',
   'toast.importFailed.body': 'Le fichier choisi n’a pas pu être lu (code {code}).',
   'toast.resetDone.title': 'Progression réinitialisée',
@@ -139,7 +139,7 @@ export const frMessages = {
   // ── Écran de jeu (P4-B) ─────────────────────────────
   'train.heading': 'Entraînement',
   'train.noSession': 'Aucune session active.',
-  'train.noSessionHint': 'Démarrez une session depuis l’accueil.',
+  'train.noSessionHint': 'Démarre une session depuis l’accueil.',
   'train.modeLabel': 'Mode : {mode}',
   'train.mode.discovery': 'Découverte',
   'train.mode.learning': 'Apprentissage',
@@ -161,10 +161,10 @@ export const frMessages = {
   'train.cue.number': 'Question {number}',
   'train.cue.question': 'Question à reconnaître',
   'train.cue.questionInstruction': 'Quel numéro ?',
-  'train.answerLabel': 'Votre réponse',
-  'train.answerPlaceholder': 'Écrivez la question…',
+  'train.answerLabel': 'Ta réponse',
+  'train.answerPlaceholder': 'Écris la question…',
   'train.numberLabel': 'Numéro de la question',
-  'train.numberHint': 'Entrez un nombre entre 1 et 36.',
+  'train.numberHint': 'Entre un nombre entre 1 et 36.',
   'train.pretest.badge': 'Prétest',
   'train.pretest.title': 'Devine, puis on verra',
   'train.pretest.lead': 'Une devinette, non corrigée : la vraie tentative viendra ensuite.',
@@ -183,9 +183,9 @@ export const frMessages = {
   'train.hint.mental-image': 'Image mentale',
   'train.hint.personal-hook': 'Ton accroche',
   'train.hint.full-answer': 'Réponse complète',
-  'train.confidence.title': 'Quelle est votre confiance ?',
+  'train.confidence.title': 'Quelle est ta confiance ?',
   'train.confidence.required':
-    'Choisissez un niveau de confiance avant de pouvoir révéler la réponse.',
+    'Choisis un niveau de confiance avant de pouvoir révéler la réponse.',
   'train.confidence.1': '1 — je devine',
   'train.confidence.2': '2 — pas sûr·e',
   'train.confidence.3': '3 — moyen',
@@ -371,7 +371,7 @@ export const frMessages = {
   'settings.dailyGoalMinutes': '{minutes} minutes',
   'settings.speechTitle': 'Synthèse vocale',
   'settings.speechLabel': 'Activer la synthèse vocale',
-  'settings.speechHint': 'La voix reste sur votre appareil ; aucune donnée n’est envoyée.',
+  'settings.speechHint': 'La voix reste sur ton appareil ; aucune donnée n’est envoyée.',
   'settings.motionTitle': 'Mouvement',
   'settings.motionLegend': 'Préférence de mouvement',
   'settings.motionSystem': 'Suivre le système',
@@ -381,7 +381,7 @@ export const frMessages = {
   'settings.confidenceLabel': 'Demander un jugement de confiance avant la réponse',
   'settings.confidenceHint': 'Aide à la calibration (L12) ; cela ne change pas la note.',
   'settings.dataTitle': 'Données',
-  'settings.dataIntro': 'Votre progression est stockée uniquement sur cet appareil.',
+  'settings.dataIntro': 'Ta progression est stockée uniquement sur cet appareil.',
   'settings.schemaVersion': 'Version du schéma : {version}',
   'settings.lastSaved': 'Dernière sauvegarde : {date}',
   'settings.neverSaved': 'Pas encore sauvegardé.',
@@ -394,7 +394,7 @@ export const frMessages = {
   'settings.resetWarning':
     'Cette action est irréversible : toute la progression locale sera remplacée.',
   'settings.resetConfirmWord': 'EFFACER',
-  'settings.resetWordLabel': 'Saisissez « {word} » pour confirmer',
+  'settings.resetWordLabel': 'Saisis « {word} » pour confirmer',
   'settings.resetWordHint':
     'Le bouton de confirmation reste inactif tant que le mot n’est pas exact.',
 
