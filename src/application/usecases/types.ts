@@ -9,7 +9,7 @@ import type {
   SessionId,
   SessionWindow,
 } from '@/domain/shared/types';
-import type { BadgeId, XpAward } from '@/domain/gamification/types';
+import type { BadgeId, PlayerSettings, XpAward } from '@/domain/gamification/types';
 import type { PersonalHook, PersonalHookKind } from '@/domain/memory/types';
 import type { MasteryCriteria, MasterySnapshot } from '@/domain/mastery/types';
 import type {
@@ -174,6 +174,26 @@ export interface ResetProgressOutput {
   readonly writeFailure: ProgressError | null;
 }
 
+/**
+ * Entrée de mise à jour des réglages.
+ *
+ * Fusion **partielle** dans `PlayerSettings` : les champs absents gardent leur
+ * valeur courante. Les valeurs sont déjà contraintes par le type (bornes
+ * `dailyGoalMinutes`, `reducedMotion`, `locale`) — aucune validation
+ * redondante côté cas d'usage.
+ */
+export interface UpdateSettingsInput {
+  readonly settings: Partial<PlayerSettings>;
+}
+
+/** Sortie de mise à jour des réglages. */
+export interface UpdateSettingsOutput {
+  /** Progression complète, réglages fusionnés, prête à persister/dispatcher. */
+  readonly progress: PersistedProgress;
+  /** Échec de la sauvegarde des réglages, ou `null` (jamais lancé — § 5.4). */
+  readonly writeFailure: ProgressError | null;
+}
+
 /** Évaluation de maîtrise exposée à l'UI. */
 export interface EvaluateMasteryOutput {
   readonly mastery: MasterySnapshot;
@@ -193,5 +213,6 @@ export interface UseCases {
   readonly importProgress: UseCase<ImportProgressInput, ImportProgressOutput>;
   readonly exportProgress: UseCase<void, ExportProgressOutput>;
   readonly resetProgress: UseCase<void, ResetProgressOutput>;
+  readonly updateSettings: UseCase<UpdateSettingsInput, UpdateSettingsOutput>;
   readonly evaluateMastery: UseCase<void, EvaluateMasteryOutput>;
 }

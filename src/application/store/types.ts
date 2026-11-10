@@ -1,5 +1,5 @@
 import type { ActId, EpochMs, LocaleCode, SessionId } from '@/domain/shared/types';
-import type { PlayerSettings, XpAward } from '@/domain/gamification/types';
+import type { XpAward } from '@/domain/gamification/types';
 import type { PersistedProgress, ProgressError } from '@/domain/progress/types';
 import type {
   AnswerFeedback,
@@ -94,7 +94,13 @@ export type AppAction =
   | { readonly type: 'ui/act-selected'; readonly actId: ActId | null }
   | { readonly type: 'ui/feedback-dismissed' }
   | { readonly type: 'ui/busy-changed'; readonly busy: boolean }
-  | { readonly type: 'settings/updated'; readonly settings: Partial<PlayerSettings> }
+  /**
+   * Réglages modifiés : l'état **complet** de la progression, fusion et
+   * persistance faites par le cas d'usage `updateSettings` (source de vérité
+   * unique). Le réducteur l'installe tel quel et se contente de refléter la
+   * locale dans `ui.locale` (duplication d'affichage, invariant UI).
+   */
+  | { readonly type: 'settings/updated'; readonly progress: PersistedProgress }
   | { readonly type: 'hooks/saved'; readonly hook: PersonalHook };
 
 /** Désabonnement d'un listener de store. */

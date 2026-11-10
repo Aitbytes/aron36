@@ -566,14 +566,26 @@ describe('réducteur — une action, un état', () => {
     expect(reduce(busy, { type: 'ui/busy-changed', busy: false }).ui.busy).toBe(false);
   });
 
-  it('settings/updated fusionne partiellement sans écraser les autres champs', () => {
+  it("settings/updated installe la progression reçue (réglages déjà fusionnés et persistés par le cas d'usage)", () => {
     const state = makeState();
-
-    const next = reduce(state, {
-      type: 'settings/updated',
-      settings: { dailyGoalMinutes: 25, speechEnabled: false },
+    // La fusion et la persistance appartiennent au cas d'usage : l'action
+    // porte l'état complet, le réducteur ne modifie plus les réglages.
+    const merged = makeProgress({
+      player: {
+        ...makeProgress().player,
+        settings: {
+          locale: 'fr',
+          speechEnabled: false,
+          reducedMotion: 'system',
+          dailyGoalMinutes: 25,
+          confidencePromptEnabled: true,
+        },
+      },
     });
 
+    const next = reduce(state, { type: 'settings/updated', progress: merged });
+
+    expect(next.progress).toBe(merged);
     expect(next.progress.player.settings).toEqual({
       locale: 'fr',
       speechEnabled: false,
@@ -582,11 +594,22 @@ describe('réducteur — une action, un état', () => {
       confidencePromptEnabled: true,
     });
     expect(next.progress.player.totalXp).toBe(0);
+    // Valeurs inchangées : aucun autre champ de l'UI n'est touché.
     expect(next.ui).toEqual(state.ui);
   });
 
-  it("settings/updated propage la locale vers l'UI", () => {
-    const next = reduce(makeState(), { type: 'settings/updated', settings: { locale: 'en' } });
+  it("settings/updated reflète la locale de la progression reçue dans l'UI", () => {
+    const state = makeState();
+    const withEnglish = makeProgress({
+      player: {
+        ...makeProgress().player,
+        settings: { ...makeProgress().player.settings, locale: 'en' },
+      },
+    });
+
+    const next = reduce(state, { type: 'settings/updated', progress: withEnglish });
+
+    expect(next.progress).toBe(withEnglish);
     expect(next.progress.player.settings.locale).toBe('en');
     expect(next.ui.locale).toBe('en');
   });
@@ -657,7 +680,7 @@ describe('réducteur — exhaustivité des actions', () => {
     'ui/act-selected': () => ({ type: 'ui/act-selected', actId: 3 }),
     'ui/feedback-dismissed': () => ({ type: 'ui/feedback-dismissed' }),
     'ui/busy-changed': () => ({ type: 'ui/busy-changed', busy: true }),
-    'settings/updated': () => ({ type: 'settings/updated', settings: { dailyGoalMinutes: 20 } }),
+    'settings/updated': () => ({ type: 'settings/updated', progress: makeProgress() }),
     'hooks/saved': () => ({ type: 'hooks/saved', hook: makeHook(1) }),
   };
 

@@ -159,18 +159,17 @@ export function reduce(state: AppState, action: AppAction): AppState {
     }
 
     case 'settings/updated': {
-      // Fusion partielle : les champs absents du patch gardent leur valeur.
-      const settings = { ...state.progress.player.settings, ...action.settings };
-      const next = withProgress(state, {
-        ...state.progress,
-        player: { ...state.progress.player, settings },
-      });
-      // `ui.locale` duplique `PlayerSettings.locale` pour l'UI : l'invariant
-      // est maintenu ici, comme `activeSessionId` l'est pour `session`.
-      if (action.settings.locale === undefined || action.settings.locale === state.ui.locale) {
+      // Source de vérité unique : la progression (réglages fusionnés et
+      // persistés) vient du cas d'usage `updateSettings`. Le réducteur ne
+      // fusionne plus rien lui-même ; il reflète seulement la locale dans
+      // `ui.locale`, duplication d'affichage maintenue comme `activeSessionId`
+      // l'est pour `session`.
+      const locale = action.progress.player.settings.locale;
+      const next = withProgress(state, action.progress);
+      if (locale === state.ui.locale) {
         return next;
       }
-      return withUi(next, { locale: action.settings.locale });
+      return withUi(next, { locale });
     }
 
     case 'hooks/saved':

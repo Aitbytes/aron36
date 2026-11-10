@@ -11,6 +11,7 @@ import {
   xpCalculator,
 } from '@/domain/gamification';
 import type {
+  PlayerSettings,
   PlayerState,
   QuestBoard,
   QuestProgressInput,
@@ -57,6 +58,8 @@ import type {
   StartSessionOutput,
   SubmitAnswerInput,
   SubmitAnswerOutput,
+  UpdateSettingsInput,
+  UpdateSettingsOutput,
   UseCases,
 } from './types';
 
@@ -545,7 +548,20 @@ export function createUseCases(
     return { progress: savedProgress, writeFailure: repository.lastWriteFailure() };
   }
 
-  /* ── 8. evaluateMastery ───────────────────────────────────────────────── */
+  /* ── 8. updateSettings ────────────────────────────────────────────────── */
+
+  function updateSettings(input: UpdateSettingsInput): UpdateSettingsOutput {
+    const progress = repository.requireProgress();
+    // Fusion partielle : les champs absents du patch gardent leur valeur.
+    const settings: PlayerSettings = { ...progress.player.settings, ...input.settings };
+    const savedProgress = repository.save({
+      ...progress,
+      player: { ...progress.player, settings },
+    });
+    return { progress: savedProgress, writeFailure: repository.lastWriteFailure() };
+  }
+
+  /* ── 9. evaluateMastery ───────────────────────────────────────────────── */
 
   function evaluateMastery(): EvaluateMasteryOutput {
     const progress = repository.requireProgress();
@@ -626,6 +642,7 @@ export function createUseCases(
     importProgress: { execute: importProgress },
     exportProgress: { execute: exportProgress },
     resetProgress: { execute: resetProgress },
+    updateSettings: { execute: updateSettings },
     evaluateMastery: { execute: evaluateMastery },
   };
 }
