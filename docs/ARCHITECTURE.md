@@ -431,6 +431,27 @@ interface Migration {
   avertissement non bloquant et propose l'export ; la session en cours continue
   en mémoire.
 
+### 5.5 Limite connue : multi-onglets
+
+**Comportement actuel.** Deux onglets ouverts simultanément tiennent chacun leur
+copie de `PersistedProgress` en mémoire et écrivent la clé unique
+`aron36.progress` en entier à chaque mutation. Il n'y a ni verrou, ni fusion :
+**le dernier écrivain gagne**, et la progression écrite par l'autre onglet est
+silencieusement perdue. Preuve : 2 réponses dans l'onglet 1 puis 2 accroches
+dans l'onglet 2 ne laissent qu'un seul `ReviewLog` conservé et l'XP de l'onglet 2
+— les écritures de l'onglet 1 sont écrasées.
+
+**Risque.** Perte d'une réponse (et d'une partie de la progression) sans message
+pour l'utilisateur, dans un cas d'usage réaliste : ouvrir un second onglet pour
+comparer un écran pendant une session.
+
+**Hors périmètre v1.** Aucun correctif n'est livré ici. Pistes retenues pour la
+suite : relire la clé avant chaque écriture et réconcilier (fusion par
+identifiant, ou refus averti si la version lue diffère), et/ou écouter
+l'évènement `storage` pour réhydrater l'onglet devenu obsolète ou avertir
+l'utilisateur. Toute solution devra rester **sans backend** et préserver la
+décision « la progression a un seul propriétaire : les cas d'usage ».
+
 ## 6. Contrat d'ordonnancement SRS
 
 ### 6.1 Algorithme retenu : FSRS-lite
