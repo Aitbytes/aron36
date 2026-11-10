@@ -456,6 +456,13 @@ export interface SessionSummary {
   readonly accuracy: Ratio;
   readonly durationMs: DurationMs;
   readonly xpAwarded: number;
+  /** Productions déclarées à l'oral (L8), pour valoriser l'oral au bilan. */
+  readonly spokenCount: number;
+  /**
+   * Fenêtre de journée de la session (L17), déduite de `ClockPort`. Portée par
+   * le résumé pour que l'écran de bilan n'ait pas à relire les journaux.
+   */
+  readonly window: SessionWindow;
   readonly byDirection: Readonly<
     Record<DrillDirection, { readonly attempts: number; readonly correct: number }>
   >;

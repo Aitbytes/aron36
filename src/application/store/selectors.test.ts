@@ -166,9 +166,8 @@ describe("sélecteurs d'affichage — projections pures", () => {
           errorSignal: 'none',
           messageKey: 'feedback.correct',
         },
-        scheduledReview: null,
         xp: { amount: 12, reason: 'production-answer', breakdown: null, questionId: 1, at: NOW },
-        reviewLog: null,
+        progress: makeProgress(),
       },
     );
 
@@ -202,7 +201,6 @@ function toAnsweredAction(submission: ReturnType<typeof answerCurrentItem>) {
       errorSignal: 'none' as const,
       messageKey: 'feedback.correct',
     },
-    scheduledReview: null,
     xp: {
       amount: 12,
       reason: 'production-answer',
@@ -210,6 +208,8 @@ function toAnsweredAction(submission: ReturnType<typeof answerCurrentItem>) {
       questionId: submission.answer.questionId,
       at: NOW,
     } as const,
-    reviewLog: null,
+    // La progression portée par l'action est celle du cas d'usage : le
+    // réducteur l'installe telle quelle (source de vérité unique).
+    progress: makeProgress(),
   };
 }

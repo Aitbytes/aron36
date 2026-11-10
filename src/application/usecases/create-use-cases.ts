@@ -11,6 +11,7 @@ import {
   xpCalculator,
 } from '@/domain/gamification';
 import type {
+  PlayerSettings,
   PlayerState,
   QuestBoard,
   QuestProgressInput,
@@ -43,6 +44,8 @@ import { buildSessionSummary, tallySession } from './summary';
 import { progressCodec } from '@/application/progress';
 import type { ProgressCodecFactory } from '@/application/progress';
 import type {
+  AbandonSessionInput,
+  AbandonSessionOutput,
   AppServices,
   EvaluateMasteryOutput,
   ExportProgressOutput,
@@ -50,17 +53,24 @@ import type {
   FinishSessionOutput,
   ImportProgressInput,
   ImportProgressOutput,
+  ResetProgressOutput,
+  RevealAnswerInput,
+  RevealAnswerOutput,
+  RevealHintInput,
+  RevealHintOutput,
   SaveHookInput,
   SaveHookOutput,
   StartSessionInput,
   StartSessionOutput,
   SubmitAnswerInput,
   SubmitAnswerOutput,
+  UpdateSettingsInput,
+  UpdateSettingsOutput,
   UseCases,
 } from './types';
 
 /**
- * Les 8 cas d'usage du contrat `UseCases` (Phase 3-C).
+ * Les cas d'usage du contrat `UseCases` (Phase 3-C et suivantes).
  *
  * Chaque cas d'usage combine le domaine (implémentations pures importées
  * directement : XP, séries, quêtes, collection, badges, métriques, maîtrise,
@@ -175,19 +185,24 @@ export function createUseCases(
 
     // (a) L12 : la confiance est déclarée **avant** révélation ; le cas d'usage
     // enchaîne confiance → révélation → note, et propage tout refus du moteur.
+    // Si l'UI a déjà révélé la réponse via `revealAnswer`, l'état est en phase
+    // `revealed` : on ne rejoue ni confiance ni révélation (sinon `wrong-phase`).
     let working = run.state;
-    if (input.confidence !== null) {
-      const judged = sessionEngine.setConfidence(working, input.confidence);
-      if (!judged.ok) {
-        throw transitionRefused(judged.failure);
+    if (working.phase === 'asking') {
+      if (input.confidence !== null) {
+        const judged = sessionEngine.setConfidence(working, input.confidence);
+        if (!judged.ok) {
+          throw transitionRefused(judged.failure);
+        }
+        working = judged.state;
       }
-      working = judged.state;
+      const revealed = sessionEngine.revealAnswer(working);
+      if (!revealed.ok) {
+        throw transitionRefused(revealed.failure);
+      }
+      working = revealed.state;
     }
-    const revealed = sessionEngine.revealAnswer(working);
-    if (!revealed.ok) {
-      throw transitionRefused(revealed.failure);
-    }
-    const submitted = sessionEngine.submitAnswer(revealed.state, {
+    const submitted = sessionEngine.submitAnswer(working, {
       itemId: input.itemId,
       grade: input.grade,
       responseTimeMs: input.responseTimeMs,
@@ -218,6 +233,13 @@ export function createUseCases(
     const dayKey = services.clock.dayKey(now);
     const isPretest = answer.isPretest;
     const isDiscrimination = answer.exerciseKind === 'discrimination';
+    // L12 : règle documentée (revue Phase 3) — la confiance **déclarée** est
+    // journalisée **dès qu'elle est fournie**, quel que soit le mode. Le moteur
+    // ne la recopie dans `SessionAnswer` que quand le plan l'exige
+    // (`requiresConfidence`) ; hors de ce cas, `answer.confidence` vaut `null`
+    // alors que `setConfidence` a bien déposé la valeur. On ne l'ignore plus
+    // silencieusement : le journal et la quête de calibration s'en nourrissent.
+    const declaredConfidence = answer.confidence ?? input.confidence;
 
     // (b) Ordonnancement : hors QCM et hors prétest (L18) — ces deux formes ne
     // prouvent aucune restitution et ne déplacent pas la carte SRS.
@@ -276,7 +298,7 @@ export function createUseCases(
           elapsedDays: scheduledReview?.elapsedDays ?? 0,
           responseTimeMs: answer.responseTimeMs,
           hintsUsed: answer.hintsUsed,
-          confidence: answer.confidence,
+          confidence: declaredConfidence,
         };
     const reviewLogs =
       reviewLog === null
@@ -304,7 +326,7 @@ export function createUseCases(
             direction: answer.direction,
             exerciseKind: answer.exerciseKind,
             grade: answer.grade,
-            confidence: answer.confidence,
+            confidence: declaredConfidence,
             responseTimeMs: answer.responseTimeMs,
             hintsUsed: answer.hintsUsed,
             wasNewCard: card.reps === 0,
@@ -406,7 +428,10 @@ export function createUseCases(
       xp,
       newlyUnlockedBadges,
       updatedProgress: savedProgress,
-      summary: completed ? buildSessionSummary(nextSession, now, run.productionXp) : null,
+      summary: completed ? buildSessionSummary(nextSession, now, run.productionXp, window) : null,
+      // (k) Échec d'écriture non fatal : reporté pour l'avertissement UI
+      // (§ 5.4), jamais lancé — l'état mémoire reste la référence.
+      writeFailure: repository.lastWriteFailure(),
     };
   }
 
@@ -415,12 +440,11 @@ export function createUseCases(
   function finishSession(input: FinishSessionInput): FinishSessionOutput {
     const run = requireRun(input.sessionId);
     // L17 : `endedAt` **et** `window` sont déduits de l'horloge injectée (jamais
-    // de `Date`, jamais d'heure fabriquée par le domaine). Les champs homonymes
-    // de l'entrée sont acceptés pour compatibilité contractuelle mais
-    // supplantés : `ClockPort` est la source unique de temps.
+    // de `Date`, jamais d'heure fabriquée par le domaine). `FinishSessionInput`
+    // ne porte donc que la session : `ClockPort` est la source unique de temps.
     const endedAt = services.clock.now();
     const window = resolveSessionWindow(services.clock, endedAt);
-    const summary = buildSessionSummary(run.state, endedAt, run.productionXp);
+    const summary = buildSessionSummary(run.state, endedAt, run.productionXp, window);
     const tally = tallySession(run.state);
     const xp = xpCalculator.forSession(
       {
@@ -454,7 +478,81 @@ export function createUseCases(
       sessionLogs: [...progress.sessionLogs, sessionLog].slice(-MAX_SESSION_LOG_ENTRIES),
     });
     runs.delete(input.sessionId);
-    return { summary, xp, updatedProgress: savedProgress };
+    return {
+      summary,
+      xp,
+      updatedProgress: savedProgress,
+      writeFailure: repository.lastWriteFailure(),
+    };
+  }
+
+  /* ── 2 bis. revealHint / revealAnswer ─────────────────────────────────── */
+
+  function revealHint(input: RevealHintInput): RevealHintOutput {
+    const run = requireRun(input.sessionId);
+    const next = sessionEngine.revealNextHint(run.state);
+    // Le moteur ne signale pas d'échec (il renvoie l'état inchangé) : refus
+    // explicite quand rien n'a été révélé — politique `disabled`, indice
+    // épuisé ou phase non `asking` (L9).
+    if (next.revealedHints === run.state.revealedHints) {
+      throw new UseCaseRejection(
+        'hint-unavailable',
+        { kind: 'hint', sessionId: input.sessionId },
+        'Aucun indice disponible pour l’item courant (politique désactivée, épuisé ou hors phase).',
+      );
+    }
+    runs.set(input.sessionId, { state: next, productionXp: run.productionXp });
+    return { state: next };
+  }
+
+  function revealAnswer(input: RevealAnswerInput): RevealAnswerOutput {
+    const run = requireRun(input.sessionId);
+    const revealed = sessionEngine.revealAnswer(run.state);
+    if (!revealed.ok) {
+      throw transitionRefused(revealed.failure);
+    }
+    runs.set(input.sessionId, { state: revealed.state, productionXp: run.productionXp });
+    return { state: revealed.state };
+  }
+
+  /* ── 3 bis. abandonSession ────────────────────────────────────────────── */
+
+  function abandonSession(input: AbandonSessionInput): AbandonSessionOutput {
+    const run = requireRun(input.sessionId);
+    const endedAt = services.clock.now();
+    const window = resolveSessionWindow(services.clock, endedAt);
+    const summary = buildSessionSummary(run.state, endedAt, run.productionXp, window);
+    // Oubli immédiat : plus aucune réponse ne sera acceptée pour cette session
+    // (sans quoi une session « abandonnée » continuerait d'écrire, majeur A7).
+    runs.delete(input.sessionId);
+    if (run.state.answers.length === 0) {
+      // Aucune réponse : aucun journal (un abandon vierge n'est pas une
+      // session), aucune écriture, aucun échec à reporter.
+      return { summary, updatedProgress: repository.requireProgress(), writeFailure: null };
+    }
+    const tally = tallySession(run.state);
+    const sessionLog: SessionLog = {
+      sessionId: input.sessionId,
+      mode: run.state.plan.mode,
+      planSeed: run.state.plan.seed,
+      startedAt: run.state.startedAt,
+      endedAt,
+      durationMs: endedAt - run.state.startedAt,
+      window,
+      itemCount: tally.itemCount,
+      productionCount: tally.productionCount,
+      discriminationCount: tally.discriminationCount,
+      spokenCount: tally.spokenCount,
+      correctCount: tally.correctCount,
+      accuracy: tally.accuracy,
+      xpAwarded: run.productionXp,
+    };
+    const progress = repository.requireProgress();
+    const savedProgress = repository.save({
+      ...progress,
+      sessionLogs: [...progress.sessionLogs, sessionLog].slice(-MAX_SESSION_LOG_ENTRIES),
+    });
+    return { summary, updatedProgress: savedProgress, writeFailure: repository.lastWriteFailure() };
   }
 
   /* ── 4. saveHook ──────────────────────────────────────────────────────── */
@@ -475,7 +573,11 @@ export function createUseCases(
       );
     }
     const savedProgress = repository.save({ ...progress, hooks: result.library });
-    return { hook: result.hook, updatedProgress: savedProgress };
+    return {
+      hook: result.hook,
+      updatedProgress: savedProgress,
+      writeFailure: repository.lastWriteFailure(),
+    };
   }
 
   /* ── 5. importProgress ────────────────────────────────────────────────── */
@@ -495,6 +597,10 @@ export function createUseCases(
     if (!result.ok) {
       return result;
     }
+    // Un import remplace tout : les sessions en cours référencent des cartes
+    // et des journaux de l'ancien profil — sans purge, une réponse de
+    // l'ancienne session serait écrite dans le profil importé (majeur A7).
+    runs.clear();
     const savedProgress = repository.save(result.progress);
     return { ok: true, progress: savedProgress, migratedFrom: result.migratedFrom };
   }
@@ -513,7 +619,7 @@ export function createUseCases(
 
   /* ── 7. resetProgress ─────────────────────────────────────────────────── */
 
-  function resetProgress(): { progress: PersistedProgress } {
+  function resetProgress(): ResetProgressOutput {
     const loaded = repository.ensureLoaded();
     if (loaded.status === 'blocked' && loaded.error.code === 'future-version') {
       // Table de décision gelée : `future-version` n'autorise **aucune**
@@ -526,13 +632,29 @@ export function createUseCases(
       );
     }
     repository.backupCorruptRaw();
+    // Un profil neuf n'a plus aucune de ces sessions : les conserver faisait
+    // accepter des réponses d'une session de l'ancien profil (majeur A7).
+    runs.clear();
     const locale =
       loaded.status === 'ready' ? loaded.progress.player.settings.locale : ('fr' as const);
     const savedProgress = repository.save(createInitialProgress(services, locale));
-    return { progress: savedProgress };
+    return { progress: savedProgress, writeFailure: repository.lastWriteFailure() };
   }
 
-  /* ── 8. evaluateMastery ───────────────────────────────────────────────── */
+  /* ── 8. updateSettings ────────────────────────────────────────────────── */
+
+  function updateSettings(input: UpdateSettingsInput): UpdateSettingsOutput {
+    const progress = repository.requireProgress();
+    // Fusion partielle : les champs absents du patch gardent leur valeur.
+    const settings: PlayerSettings = { ...progress.player.settings, ...input.settings };
+    const savedProgress = repository.save({
+      ...progress,
+      player: { ...progress.player, settings },
+    });
+    return { progress: savedProgress, writeFailure: repository.lastWriteFailure() };
+  }
+
+  /* ── 9. evaluateMastery ───────────────────────────────────────────────── */
 
   function evaluateMastery(): EvaluateMasteryOutput {
     const progress = repository.requireProgress();
@@ -609,10 +731,14 @@ export function createUseCases(
     startSession: { execute: startSession },
     submitAnswer: { execute: submitAnswer },
     finishSession: { execute: finishSession },
+    abandonSession: { execute: abandonSession },
+    revealHint: { execute: revealHint },
+    revealAnswer: { execute: revealAnswer },
     saveHook: { execute: saveHook },
     importProgress: { execute: importProgress },
     exportProgress: { execute: exportProgress },
     resetProgress: { execute: resetProgress },
+    updateSettings: { execute: updateSettings },
     evaluateMastery: { execute: evaluateMastery },
   };
 }

@@ -23,7 +23,7 @@ import type { ClockPort } from '@/application/ports/ClockPort';
 import type { IdPort } from '@/application/ports/IdPort';
 import type { RandomPort } from '@/application/ports/RandomPort';
 import type { SpeechPort } from '@/application/ports/SpeechPort';
-import type { StorageKey, StoragePort } from '@/application/ports/StoragePort';
+import type { StorageFailure, StorageKey, StoragePort } from '@/application/ports/StoragePort';
 import { createAppServices, createInitialProgress } from '@/application/bootstrap';
 import { QUESTION_CATALOG } from '@/domain/questions';
 import { sessionBuilder } from '@/domain/session';
@@ -171,6 +171,14 @@ export class FixedClock implements ClockPort {
     return `${pad(year, 4)}-${pad(month)}-${pad(day)}`;
   }
 
+  localHourOfDay(at: EpochMs): number {
+    // Décalage constant : suffisant pour un fuseau sans transition dans la
+    // fenêtre testée. Les jours de changement d'heure se testent sur
+    // `SystemClock` (qui s'appuie sur `Intl`).
+    const msOfDay = (((at + this.offsetMs) % DAY_MS) + DAY_MS) % DAY_MS;
+    return Math.floor(msOfDay / HOUR_MS);
+  }
+
   startOfLocalDay(dayKey: DayKey): EpochMs {
     const year = Number(dayKey.slice(0, 4));
     const month = Number(dayKey.slice(5, 7));
@@ -184,6 +192,12 @@ export class FixedClock implements ClockPort {
 /** Stockage clé/valeur en mémoire, avec amorce pour préparer un état. */
 export class MemoryStorage implements StoragePort {
   private readonly entries = new Map<StorageKey, string>();
+  private writeFailure: StorageFailure | null = null;
+
+  /** Amorce de test : fait échouer (ou rétablit avec `null`) les écritures. */
+  failWrites(failure: StorageFailure | null): void {
+    this.writeFailure = failure;
+  }
 
   isAvailable(): boolean {
     return true;
@@ -193,7 +207,13 @@ export class MemoryStorage implements StoragePort {
     return { ok: true, value: this.entries.get(key) ?? null };
   }
 
-  write(key: StorageKey, value: string): { ok: true; value: undefined } {
+  write(
+    key: StorageKey,
+    value: string,
+  ): { ok: true; value: undefined } | { ok: false; failure: StorageFailure } {
+    if (this.writeFailure !== null) {
+      return { ok: false, failure: this.writeFailure };
+    }
     this.entries.set(key, value);
     return { ok: true, value: undefined };
   }

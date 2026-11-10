@@ -6,12 +6,11 @@ import { MAX_SESSION_LOG_ENTRIES } from '@/domain/progress/types';
 import type { ProgressError } from '@/domain/progress/types';
 import type {
   AnswerFeedback,
-  SessionAnswer,
   SessionLog,
   SessionState,
   SessionSummary,
 } from '@/domain/session/types';
-import type { ReviewLog, ScheduledReview } from '@/domain/srs/types';
+import type { ReviewLog } from '@/domain/srs/types';
 
 import { createInitialAppState } from './initialState';
 import { reduce } from './reducer';
@@ -128,9 +127,11 @@ describe('réducteur — pureté', () => {
       session: submission.state,
       answer: submission.answer,
       feedback: submission.feedback ?? feedbackPlaceholder(),
-      scheduledReview: null,
       xp: makeXp(12, submission.answer.questionId),
-      reviewLog: null,
+      progress: makeProgress({
+        reviewLogs: [makeReviewLog({ sessionId: session.plan.id })],
+        player: { ...makeProgress().player, totalXp: 12 },
+      }),
     };
 
     const frozen = deepFreeze({
@@ -197,14 +198,30 @@ describe('réducteur — une action, un état', () => {
     expect(next.ui).toEqual(state.ui);
   });
 
-  it('progress/replaced remplace la progression et purge la dernière erreur', () => {
-    const state = { ...makeState(), lastError: makeError('invalid-json') };
+  it("progress/replaced remplace la progression, purge l'erreur et la session étrangère", () => {
+    const session = startReviewSession(1);
+    const submission = answerCurrentItem(session);
+    const state = {
+      ...makeState(),
+      lastError: makeError('invalid-json'),
+      session,
+      ui: {
+        ...makeState().ui,
+        activeSessionId: session.plan.id,
+        feedback: { answer: submission.answer, feedback: feedbackPlaceholder() },
+      },
+    };
     const imported = makeProgress({ player: { ...makeProgress().player, totalXp: 99 } });
 
     const next = reduce(state, { type: 'progress/replaced', progress: imported });
 
     expect(next.progress).toBe(imported);
     expect(next.lastError).toBeNull();
+    // Aligné sur `progress/reset` : une session étrangère (et son feedback) ne
+    // survit pas à un import, sinon ses items référencent des cartes importées.
+    expect(next.session).toBeNull();
+    expect(next.ui.activeSessionId).toBeNull();
+    expect(next.ui.feedback).toBeNull();
   });
 
   it('progress/saved avance uniquement savedAt', () => {
@@ -275,7 +292,7 @@ describe('réducteur — une action, un état', () => {
     expect(next.progress).toEqual(state.progress);
   });
 
-  it('session/answered met à jour session, feedback, XP, carte SRS et journal — sans toucher savedAt', () => {
+  it("session/answered installe la progression du cas d'usage à l'identique, avec session et feedback", () => {
     const session = startReviewSession(1);
     const cardBefore = {
       questionId: 1,
@@ -300,25 +317,21 @@ describe('réducteur — une action, un état', () => {
       ui: { ...makeState().ui, activeSessionId: session.plan.id },
     };
     const submission = answerCurrentItem(session);
-    const scheduled: ScheduledReview = {
-      previousCard: cardBefore,
-      nextCard: { ...cardBefore, dueAt: NOW + 86_400_000, intervalDays: 12, reps: 4 },
-      elapsedDays: 10,
-      retrievabilityBefore: 0.9,
-      isLapse: false,
-      intervalDeltaDays: 2,
-    };
-
-    const actionReviewLog = makeReviewLog({
-      id: 'review-log-de-test',
-      sessionId: session.plan.id,
-      questionId: submission.answer.questionId,
-      grade: 'good',
-      reviewedAt: NOW + 5_000,
-      previousDueAt: 0,
-      nextDueAt: NOW + 86_400_000,
-      intervalDays: 12,
-      elapsedDays: 10,
+    // La progression portée par l'action est celle du **cas d'usage** : XP,
+    // carte SRS suivante et journal de révision déjà appliqués et persistés
+    // côté dépôt. Le réducteur n'a plus rien à dériver.
+    const fromUseCase = makeProgress({
+      cards: {
+        '1': { ...cardBefore, dueAt: NOW + 86_400_000, intervalDays: 12, reps: 4 },
+      },
+      reviewLogs: [
+        makeReviewLog({
+          id: 'review-log-de-test',
+          sessionId: session.plan.id,
+          questionId: submission.answer.questionId,
+        }),
+      ],
+      player: { ...makeProgress().player, totalXp: 22 },
     });
 
     const next = reduce(state, {
@@ -326,10 +339,8 @@ describe('réducteur — une action, un état', () => {
       session: submission.state,
       answer: submission.answer,
       feedback: submission.feedback ?? feedbackPlaceholder(),
-      scheduledReview: scheduled,
       xp: makeXp(12, submission.answer.questionId),
-      // Journal fabriqué par le cas d'usage (id = `IdPort`) : utilisé tel quel.
-      reviewLog: actionReviewLog,
+      progress: fromUseCase,
     });
 
     // Session remplacée par celle du moteur, feedback affiché.
@@ -338,88 +349,122 @@ describe('réducteur — une action, un état', () => {
       answer: submission.answer,
       feedback: submission.feedback ?? feedbackPlaceholder(),
     });
-    // XP créditée sur la progression.
+    // Le réducteur n'invente rien : la progression installée est la référence
+    // exacte portée par l'action (carte, journal et XP tels que produits).
+    expect(next.progress).toBe(fromUseCase);
     expect(next.progress.player.totalXp).toBe(22);
-    // Carte SRS remplacée par la carte suivante de l'ordonnanceur.
-    expect(next.progress.cards['1']).toEqual(scheduled.nextCard);
-    // Le journal de l'action est utilisé **tel quel** (référence identique) :
-    // le réducteur ne dérive plus aucun identifiant (raccordement Phase 3-C).
     expect(next.progress.reviewLogs).toHaveLength(1);
-    const log = next.progress.reviewLogs[0];
-    expect(log).toBe(actionReviewLog);
-    expect(log?.id).toBe('review-log-de-test');
-    expect(log?.id).not.toBe(submission.answer.itemId);
-    // savedAt reste la propriété du cas d'usage (progress/saved).
-    expect(next.progress.savedAt).toBe(NOW);
+    expect(next.progress.reviewLogs[0]).toBe(fromUseCase.reviewLogs[0]);
+    expect(next.progress.reviewLogs[0]?.id).toBe('review-log-de-test');
+    expect(next.progress.reviewLogs[0]?.id).not.toBe(submission.answer.itemId);
   });
 
-  it('session/answered ne journalise pas un prétest (L18) et garde la carte inchangée sans ordonnancement', () => {
+  it('session/answered ne recalcule rien : quêtes, série, badges et collection portés par la progression reçue', () => {
+    // Ancienne divergence (revue Phase 3) : le store affichait
+    // {streak: 0, badges: [], questBoard: null} pendant que la progression
+    // persistée portait {streak: 1, badges: ['premier-pas'], questBoard:
+    // [3 quêtes]}. La progression ayant un seul propriétaire (le cas d'usage),
+    // le réducteur installe l'état reçu sans recalcule — la divergence des
+    // quatre champs est structurellement impossible.
     const session = startReviewSession(1);
     const state = { ...makeState(), session };
     const submission = answerCurrentItem(session);
-    const pretestAnswer: SessionAnswer = { ...submission.answer, isPretest: true };
+    const fromUseCase = makeProgress({
+      player: {
+        ...makeProgress().player,
+        totalXp: 12,
+        streak: { current: 1, longest: 1, lastActiveDay: '2026-06-10', freezes: 0, frozenDays: [] },
+        badges: [{ badgeId: 'premier-pas', unlockedAt: NOW, progress: 1, target: 1 }],
+        questBoard: {
+          dayKey: '2026-06-10',
+          seed: 'seed-quetes',
+          quests: [
+            {
+              questId: 'premiere-reponse',
+              dayKey: '2026-06-10',
+              progress: 1,
+              target: 1,
+              completedAt: NOW,
+              attempts: 1,
+              correct: 1,
+              seenQuestionIds: [1],
+            },
+            {
+              questId: 'precision-du-jour',
+              dayKey: '2026-06-10',
+              progress: 0,
+              target: 5,
+              completedAt: null,
+              attempts: 0,
+              correct: 0,
+              seenQuestionIds: [],
+            },
+            {
+              questId: 'sans-indice',
+              dayKey: '2026-06-10',
+              progress: 0,
+              target: 3,
+              completedAt: null,
+              attempts: 0,
+              correct: 0,
+              seenQuestionIds: [],
+            },
+          ],
+        },
+        collection: {
+          entries: [{ questionId: 1, rarity: 'common', obtainedAt: NOW, masteryTier: 1 }],
+        },
+      },
+      reviewLogs: [makeReviewLog({ sessionId: session.plan.id })],
+    });
 
     const next = reduce(state, {
       type: 'session/answered',
       session: submission.state,
-      answer: pretestAnswer,
+      answer: submission.answer,
       feedback: submission.feedback ?? feedbackPlaceholder(),
-      scheduledReview: null,
-      xp: makeXp(0),
-      // Un prétest n'est jamais journalisé : l'action porte `null`.
-      reviewLog: null,
+      xp: makeXp(12, submission.answer.questionId),
+      progress: fromUseCase,
     });
 
-    expect(next.progress.reviewLogs).toHaveLength(0);
-    expect(next.progress.cards).toEqual(state.progress.cards);
-    expect(next.progress.player.totalXp).toBe(0);
-    expect(next.ui.feedback?.answer.isPretest).toBe(true);
+    expect(next.progress).toBe(fromUseCase);
+    expect(next.progress.player.streak.current).toBe(1);
+    expect(next.progress.player.badges.map((badge) => badge.badgeId)).toEqual(['premier-pas']);
+    expect(next.progress.player.questBoard?.quests).toHaveLength(3);
+    expect(next.progress.player.collection.entries).toHaveLength(1);
   });
 
-  it("session/completed efface le feedback, ramène à l'accueil, garde la session pour le bilan et crédite l'XP de fin", () => {
+  it("session/completed efface le feedback, ramène à l'accueil, garde la session pour le bilan et installe la progression de clôture", () => {
     const session = startReviewSession(1);
     const first = answerCurrentItem(session);
+    const progressAfterAnswer = makeProgress({
+      player: { ...makeProgress().player, totalXp: 12 },
+      reviewLogs: [makeReviewLog({ sessionId: session.plan.id })],
+    });
     const answered = reduce(
-      { ...makeState({ player: { ...makeProgress().player, totalXp: 12 } }), session },
+      { ...makeState(), session },
       {
         type: 'session/answered',
         session: first.state,
         answer: first.answer,
         feedback: first.feedback ?? feedbackPlaceholder(),
-        scheduledReview: null,
         xp: makeXp(12, first.answer.questionId),
-        reviewLog: makeReviewLog({
-          sessionId: session.plan.id,
-          questionId: first.answer.questionId,
-        }),
+        progress: progressAfterAnswer,
       },
     );
-
-    const summary: SessionSummary = {
-      sessionId: session.plan.id,
-      mode: session.plan.mode,
-      itemCount: 1,
-      answeredCount: 1,
-      correctCount: 1,
-      accuracy: 1,
-      durationMs: 5_000,
-      xpAwarded: 22,
-      byDirection: {
-        'order-to-question': { attempts: 1, correct: 1 },
-        'keyword-to-question': { attempts: 0, correct: 0 },
-        'image-to-question': { attempts: 0, correct: 0 },
-        'number-to-question': { attempts: 0, correct: 0 },
-        'question-to-number': { attempts: 0, correct: 0 },
-      },
-    };
+    // Progression produite par `finishSession` : SessionLog (fenêtre L17) et
+    // XP de clôture déjà écrits, troncatures comprises.
+    const progressAfterFinish = makeProgress({
+      player: { ...makeProgress().player, totalXp: 22 },
+      reviewLogs: progressAfterAnswer.reviewLogs,
+      sessionLogs: [makeSessionLog({ sessionId: session.plan.id })],
+    });
 
     const next = reduce(answered, {
       type: 'session/completed',
-      summary,
+      summary: makeSummary(session),
       xp: makeXp(10),
-      // Journal de session fabriqué par le cas d'usage (fenêtre L17 issue de
-      // ClockPort) : le réducteur l'ajoute au journal persisté.
-      sessionLog: makeSessionLog({ sessionId: session.plan.id }),
+      progress: progressAfterFinish,
     });
 
     expect(next.ui.feedback).toBeNull();
@@ -429,22 +474,24 @@ describe('réducteur — une action, un état', () => {
     // session/abandoned.
     expect(next.session).toBe(first.state);
     expect(next.session?.phase).toBe('completed');
-    expect(next.progress.player.totalXp).toBe(34);
-    // Raccordement Phase 3-C : le SessionLog porté par l'action est écrit.
+    // Le réducteur n'invente rien : la progression est celle du cas d'usage.
+    expect(next.progress).toBe(progressAfterFinish);
     expect(next.progress.sessionLogs).toHaveLength(1);
-    expect(next.progress.sessionLogs[0]).toEqual({
-      ...makeSessionLog({ sessionId: session.plan.id }),
-    });
+    expect(next.progress.sessionLogs[0]?.sessionId).toBe(session.plan.id);
+    expect(next.progress.player.totalXp).toBe(22);
   });
 
-  it('session/completed ajoute le journal au progress persisté et tronque à MAX_SESSION_LOG_ENTRIES', () => {
+  it("session/completed installe la progression reçue sans recalcule (troncature déjà faite par le cas d'usage)", () => {
     const session = startReviewSession(1);
     const saturatedLogs: SessionLog[] = Array.from(
       { length: MAX_SESSION_LOG_ENTRIES },
       (_unused, index) => makeSessionLog({ sessionId: `session-ancienne-${String(index)}` }),
     );
+    // Le cas d'usage a déjà tronqué à la limite de persistance avant de
+    // produire cette progression : le réducteur l'installe telle quelle.
+    const fromUseCase = makeProgress({ sessionLogs: saturatedLogs });
     const state = {
-      ...makeState({ sessionLogs: saturatedLogs }),
+      ...makeState(),
       session,
     };
 
@@ -452,15 +499,16 @@ describe('réducteur — une action, un état', () => {
       type: 'session/completed',
       summary: makeSummary(session),
       xp: makeXp(10),
-      sessionLog: makeSessionLog({ sessionId: session.plan.id }),
+      progress: fromUseCase,
     });
 
-    // La limite est respectée : les sessions les plus anciennes sortent du
-    // journal, la plus récente (celle de l'action) reste en fin de tableau.
+    // La limite est respectée sans que le réducteur ne re-tronque : la
+    // progression est la référence exacte portée par l'action.
+    expect(next.progress).toBe(fromUseCase);
     expect(next.progress.sessionLogs).toHaveLength(MAX_SESSION_LOG_ENTRIES);
-    expect(next.progress.sessionLogs.at(-1)?.sessionId).toBe(session.plan.id);
+    expect(next.progress.sessionLogs.at(-1)?.sessionId).toBe('session-ancienne-499');
     expect(next.progress.sessionLogs.some((log) => log.sessionId === 'session-ancienne-0')).toBe(
-      false,
+      true,
     );
   });
 
@@ -511,11 +559,10 @@ describe('réducteur — une action, un état', () => {
         session: submission.state,
         answer: submission.answer,
         feedback: submission.feedback ?? feedbackPlaceholder(),
-        scheduledReview: null,
         xp: makeXp(12),
-        reviewLog: makeReviewLog({
-          sessionId: submission.state.plan.id,
-          questionId: submission.answer.questionId,
+        progress: makeProgress({
+          reviewLogs: [makeReviewLog({ sessionId: submission.state.plan.id })],
+          player: { ...makeProgress().player, totalXp: 12 },
         }),
       },
     );
@@ -535,14 +582,26 @@ describe('réducteur — une action, un état', () => {
     expect(reduce(busy, { type: 'ui/busy-changed', busy: false }).ui.busy).toBe(false);
   });
 
-  it('settings/updated fusionne partiellement sans écraser les autres champs', () => {
+  it("settings/updated installe la progression reçue (réglages déjà fusionnés et persistés par le cas d'usage)", () => {
     const state = makeState();
-
-    const next = reduce(state, {
-      type: 'settings/updated',
-      settings: { dailyGoalMinutes: 25, speechEnabled: false },
+    // La fusion et la persistance appartiennent au cas d'usage : l'action
+    // porte l'état complet, le réducteur ne modifie plus les réglages.
+    const merged = makeProgress({
+      player: {
+        ...makeProgress().player,
+        settings: {
+          locale: 'fr',
+          speechEnabled: false,
+          reducedMotion: 'system',
+          dailyGoalMinutes: 25,
+          confidencePromptEnabled: true,
+        },
+      },
     });
 
+    const next = reduce(state, { type: 'settings/updated', progress: merged });
+
+    expect(next.progress).toBe(merged);
     expect(next.progress.player.settings).toEqual({
       locale: 'fr',
       speechEnabled: false,
@@ -551,11 +610,22 @@ describe('réducteur — une action, un état', () => {
       confidencePromptEnabled: true,
     });
     expect(next.progress.player.totalXp).toBe(0);
+    // Valeurs inchangées : aucun autre champ de l'UI n'est touché.
     expect(next.ui).toEqual(state.ui);
   });
 
-  it("settings/updated propage la locale vers l'UI", () => {
-    const next = reduce(makeState(), { type: 'settings/updated', settings: { locale: 'en' } });
+  it("settings/updated reflète la locale de la progression reçue dans l'UI", () => {
+    const state = makeState();
+    const withEnglish = makeProgress({
+      player: {
+        ...makeProgress().player,
+        settings: { ...makeProgress().player.settings, locale: 'en' },
+      },
+    });
+
+    const next = reduce(state, { type: 'settings/updated', progress: withEnglish });
+
+    expect(next.progress).toBe(withEnglish);
     expect(next.progress.player.settings.locale).toBe('en');
     expect(next.ui.locale).toBe('en');
   });
@@ -596,11 +666,10 @@ describe('réducteur — exhaustivité des actions', () => {
     session: submission.state,
     answer: submission.answer,
     feedback: submission.feedback ?? feedbackPlaceholder(),
-    scheduledReview: null,
     xp: makeXp(12),
-    reviewLog: makeReviewLog({
-      sessionId: submission.state.plan.id,
-      questionId: submission.answer.questionId,
+    progress: makeProgress({
+      reviewLogs: [makeReviewLog({ sessionId: submission.state.plan.id })],
+      player: { ...makeProgress().player, totalXp: 12 },
     }),
   };
 
@@ -620,14 +689,14 @@ describe('réducteur — exhaustivité des actions', () => {
       type: 'session/completed',
       summary: makeSummary(session),
       xp: makeXp(10),
-      sessionLog: makeSessionLog({ sessionId: session.plan.id }),
+      progress: makeProgress({ sessionLogs: [makeSessionLog({ sessionId: session.plan.id })] }),
     }),
     'session/abandoned': () => ({ type: 'session/abandoned' }),
     'ui/navigate': () => ({ type: 'ui/navigate', screen: 'train' }),
     'ui/act-selected': () => ({ type: 'ui/act-selected', actId: 3 }),
     'ui/feedback-dismissed': () => ({ type: 'ui/feedback-dismissed' }),
     'ui/busy-changed': () => ({ type: 'ui/busy-changed', busy: true }),
-    'settings/updated': () => ({ type: 'settings/updated', settings: { dailyGoalMinutes: 20 } }),
+    'settings/updated': () => ({ type: 'settings/updated', progress: makeProgress() }),
     'hooks/saved': () => ({ type: 'hooks/saved', hook: makeHook(1) }),
   };
 
@@ -719,6 +788,10 @@ function makeSummary(session: SessionState): SessionSummary {
     accuracy: session.answers.length === 0 ? 0 : correct / session.answers.length,
     durationMs: 5_000,
     xpAwarded: 12,
+    spokenCount: session.answers.filter(
+      (answer) => !answer.isPretest && answer.channel !== 'written',
+    ).length,
+    window: 'morning',
     byDirection: {
       'order-to-question': byDirection('order-to-question'),
       'keyword-to-question': byDirection('keyword-to-question'),

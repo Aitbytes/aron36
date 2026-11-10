@@ -77,8 +77,6 @@ describe('parcours complet — démarrer, répondre, clôturer', () => {
     // Clôture : journal complet, XP de fin, persistance.
     const finished = harness.useCases.finishSession.execute({
       sessionId: started.plan.id,
-      now: harness.clock.now(),
-      window: 'morning',
     });
     expect(finished.summary.itemCount).toBe(3);
     expect(finished.summary.answeredCount).toBe(3);
@@ -145,8 +143,6 @@ describe('parcours complet — démarrer, répondre, clôturer', () => {
     harness.clock.advance(5_000);
     const finished = harness.useCases.finishSession.execute({
       sessionId,
-      now: harness.clock.now(),
-      window: 'morning',
     });
 
     // durée exacte : 6 avances de 5 s depuis le démarrage (30 000 ms).
@@ -154,6 +150,10 @@ describe('parcours complet — démarrer, répondre, clôturer', () => {
     // précision pondérée exacte : (1 + 0 + 1 + 1 + 1) / 5.
     expect(finished.summary.accuracy).toBeCloseTo(0.8, 10);
     expect(finished.summary.correctCount).toBe(4);
+    // L8/L17 : le résumé valorise l'oral et porte la fenêtre de journée, sans
+    // relire les journaux.
+    expect(finished.summary.spokenCount).toBe(spokenDeclarations);
+    expect(finished.summary.window).toBe('morning');
     // Session mixte : exactement un QCM (plafond 20 % de 5 items).
     expect(finished.summary.itemCount).toBe(5);
     const stored = readStored(harness);
@@ -245,6 +245,48 @@ describe('parcours complet — démarrer, répondre, clôturer', () => {
         failure: 'confidence-required',
       });
     }
+  });
+
+  it('journalise la confiance fournie en mode learning (L12)', () => {
+    const harness = createHarness();
+    seedFreshProgress(harness);
+    // `learning` n'exige pas de confiance : le moteur ne la recopiera pas dans
+    // `SessionAnswer`. Le cas d'usage ne doit pourtant pas l'ignorer.
+    const started = harness.useCases.startSession.execute({ mode: 'learning', maxItems: 1 });
+    expect(started.plan.config.requiresConfidence).toBe(false);
+    const item = started.plan.items[0];
+    if (item === undefined) {
+      throw new Error('item manquant');
+    }
+
+    const output = harness.useCases.submitAnswer.execute({
+      sessionId: started.plan.id,
+      itemId: item.id,
+      grade: 'good',
+      confidence: 5,
+      responseTimeMs: 1_000,
+      hintsUsed: 0,
+      channel: 'written',
+    });
+
+    // Le moteur ne recopie pas la confiance hors `requiresConfidence`…
+    expect(output.answer.confidence).toBeNull();
+    // … mais le journal de révision porte bien la confiance **déclarée** :
+    // le badge et la quête de calibration s'en nourrissent (L12).
+    expect(output.updatedProgress.reviewLogs.at(-1)?.confidence).toBe(5);
+    // Sans confiance fournie, rien n'est inventé.
+    const started2 = harness.useCases.startSession.execute({ mode: 'learning', maxItems: 1 });
+    const item2 = started2.plan.items[0];
+    const without = harness.useCases.submitAnswer.execute({
+      sessionId: started2.plan.id,
+      itemId: item2?.id ?? '',
+      grade: 'good',
+      confidence: null,
+      responseTimeMs: 1_000,
+      hintsUsed: 0,
+      channel: 'written',
+    });
+    expect(without.updatedProgress.reviewLogs.at(-1)?.confidence).toBeNull();
   });
 
   it('clôture avec confiance déclarée avant révélation (mode révision)', () => {

@@ -1,4 +1,4 @@
-import { HOUR_MS, SESSION_WINDOW_HOURS } from '@/domain/shared/types';
+import { SESSION_WINDOW_HOURS } from '@/domain/shared/types';
 import type { EpochMs, SessionWindow } from '@/domain/shared/types';
 import type { ClockPort } from '@/application/ports/ClockPort';
 
@@ -10,18 +10,17 @@ import type { ClockPort } from '@/application/ports/ClockPort';
  * (`SESSION_WINDOW_HOURS` : `morning` [5, 12), `day` [12, 19), `evening`
  * [19, 23), `night` [23, 5)) et de l'heure **locale** fournie par le port.
  *
- * L'heure locale est mesurée comme l'écart entre l'instant et le début du jour
- * local (`ClockPort.startOfLocalDay(ClockPort.dayKey(at))`) — le port n'expose
- * pas d'heure locale directe, et la couche application n'a le droit d'utiliser
- * aucune horloge implicite. Limite documentée : les jours de transition
- * horaire (DST), l'écart peut différer de l'heure civile d'une heure, ce qui
- * ne déplace la fenêtre qu'au voisinage immédiat d'une borne. Un port exposant
- * un jour l'heure locale exacte remplacera cette arithmétique sans changer
- * d'appelant.
+ * L'heure locale est fournie directement par `ClockPort.localHourOfDay(at)`,
+ * dont l'implémentation s'appuie sur `Intl` (base tz du moteur). L'ancien
+ * calcul par écart à `startOfLocalDay` décalait la fenêtre d'une heure les
+ * jours de changement d'heure : il a été supprimé (revue Phase 3, majeur A6).
+ * La couche application n'utilise toujours aucune horloge implicite.
  */
 export function resolveSessionWindow(clock: ClockPort, at: EpochMs): SessionWindow {
-  const startOfLocalDay = clock.startOfLocalDay(clock.dayKey(at));
-  const localHour = Math.floor((at - startOfLocalDay) / HOUR_MS);
+  // Heure civile locale exacte, fournie par le port : l'ancien calcul
+  // `(at - startOfLocalDay(at)) / HOUR_MS` décalait la fenêtre d'une heure les
+  // jours de changement d'heure (revue Phase 3, majeur A6).
+  const localHour = clock.localHourOfDay(at);
   const bounds = SESSION_WINDOW_HOURS;
   if (localHour < bounds.morningStart || localHour >= bounds.nightStart) {
     return 'night';

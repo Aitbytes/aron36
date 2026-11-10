@@ -1,15 +1,13 @@
 import type { ActId, EpochMs, LocaleCode, SessionId } from '@/domain/shared/types';
-import type { PlayerSettings, XpAward } from '@/domain/gamification/types';
+import type { XpAward } from '@/domain/gamification/types';
 import type { PersistedProgress, ProgressError } from '@/domain/progress/types';
 import type {
   AnswerFeedback,
   SessionAnswer,
-  SessionLog,
   SessionState,
   SessionSummary,
 } from '@/domain/session/types';
 import type { PersonalHook } from '@/domain/memory/types';
-import type { ReviewLog, ScheduledReview } from '@/domain/srs/types';
 
 /**
  * Store applicatif (Phase 3).
@@ -65,34 +63,44 @@ export type AppAction =
       readonly session: SessionState;
       readonly answer: SessionAnswer;
       readonly feedback: AnswerFeedback;
-      readonly scheduledReview: ScheduledReview | null;
+      /**
+       * XP de la réponse, pour l'**affichage seul** (toast Phase 4) : la
+       * progression portée par `progress` l'a déjà créditée — le réducteur ne
+       * l'additionne jamais (source de vérité unique, revue Phase 3).
+       */
       readonly xp: XpAward;
       /**
-       * Journal de révision fabriqué par le cas d'usage, utilisé **tel quel** :
-       * son `id` provient de `IdPort.newReviewLogId()`, un espace d'identifiants
-       * distinct de `SessionAnswer.itemId`. `null` pour un prétest (L18), qui
-       * n'est jamais journalisé.
+       * État **complet** de la progression, produit **et** persisté par le cas
+       * d'usage : XP, carte SRS suivante, `ReviewLog` (quand il existe — un
+       * prétest L18 n'en produit pas), quêtes, série, badges, collection. Le
+       * réducteur l'installe tel quel et ne dérive rien.
        */
-      readonly reviewLog: ReviewLog | null;
+      readonly progress: PersistedProgress;
     }
   | {
       readonly type: 'session/completed';
       readonly summary: SessionSummary;
+      /** XP de clôture, pour l'affichage seul : déjà créditée dans `progress`. */
       readonly xp: XpAward;
       /**
-       * Journal de session fabriqué par le cas d'usage `finishSession` : la
-       * fenêtre L17 y est déduite de l'heure **locale** via `ClockPort`, que le
-       * réducteur ne possède pas. Il est ici ajouté à
-       * `progress.sessionLogs` (troncature `MAX_SESSION_LOG_ENTRIES`).
+       * État complet produit par `finishSession` : le `SessionLog` (fenêtre L17
+       * déduite de `ClockPort`) et l'XP y sont déjà écrits, troncatures
+       * comprises. Le réducteur l'installe tel quel.
        */
-      readonly sessionLog: SessionLog;
+      readonly progress: PersistedProgress;
     }
   | { readonly type: 'session/abandoned' }
   | { readonly type: 'ui/navigate'; readonly screen: AppScreen }
   | { readonly type: 'ui/act-selected'; readonly actId: ActId | null }
   | { readonly type: 'ui/feedback-dismissed' }
   | { readonly type: 'ui/busy-changed'; readonly busy: boolean }
-  | { readonly type: 'settings/updated'; readonly settings: Partial<PlayerSettings> }
+  /**
+   * Réglages modifiés : l'état **complet** de la progression, fusion et
+   * persistance faites par le cas d'usage `updateSettings` (source de vérité
+   * unique). Le réducteur l'installe tel quel et se contente de refléter la
+   * locale dans `ui.locale` (duplication d'affichage, invariant UI).
+   */
+  | { readonly type: 'settings/updated'; readonly progress: PersistedProgress }
   | { readonly type: 'hooks/saved'; readonly hook: PersonalHook };
 
 /** Désabonnement d'un listener de store. */

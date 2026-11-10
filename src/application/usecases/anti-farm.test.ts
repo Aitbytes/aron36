@@ -115,8 +115,6 @@ describe('anti-reconnaissance — une session entièrement QCM', () => {
 
     const finished = harness.useCases.finishSession.execute({
       sessionId: started.plan.id,
-      now: harness.clock.now(),
-      window: 'morning',
     });
 
     // Bonus de session : complétion seulement, jamais « session parfaite ».

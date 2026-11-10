@@ -1,14 +1,17 @@
 import { STORAGE_KEY } from '@/domain/progress/types';
-import type {
-  PersistedProgress,
-  ProgressCodec,
-  ProgressError,
-  ProgressLoadResult,
-} from '@/domain/progress/types';
+import type { PersistedProgress, ProgressCodec, ProgressError } from '@/domain/progress/types';
+import { readProgressWithRaw } from '@/application/progress/loadProgress';
+import type { ProgressLoadResult } from '@/domain/progress/types';
 import type { AppServices } from './types';
 
 /**
- * Lecture et écriture de la progression persistée.
+ * Lecture et écriture de la progression persistée, pour les cas d'usage.
+ *
+ * La lecture **délègue au lecteur unique** `readProgressWithRaw`
+ * (`@/application/progress/loadProgress`), qui décode, applique le repli v0 et
+ * **sauvegarde la donnée illisible** sous `aron36.progress.corrupt.*`. Il n'y a
+ * qu'un seul chemin de lecture : le chemin branché (`hydrate`, dépôt des cas
+ * d'usage) hérite donc de la sauvegarde de corruption (revue Phase 3, majeur A4).
  *
  * La taxonomie d'erreurs est **unique** (`ProgressErrorCode`) : un échec du
  * support de stockage est converti en statut `corrupt` (jamais une exception),
@@ -24,59 +27,12 @@ export interface PersistedProgressRead {
   readonly raw: string | null;
 }
 
-/** Lit la progression sans jamais écrire ni supprimer. */
+/** Lit la progression via le lecteur unique (décodage, v0, sauvegarde). */
 export function readPersistedProgress(
   services: AppServices,
   codec: ProgressCodec,
 ): PersistedProgressRead {
-  const read = services.storage.read(STORAGE_KEY);
-  if (!read.ok) {
-    // Échec du support (quota, mode privé…) : traité comme donnée non lisible,
-    // jamais comme une exception franchissant la frontière.
-    return {
-      result: {
-        status: 'corrupt',
-        error: {
-          code: read.failure.code,
-          message: read.failure.message,
-          details: null,
-        },
-        backupKey: null,
-      },
-      raw: null,
-    };
-  }
-  const raw = read.value;
-  if (raw === null) {
-    return { result: { status: 'empty' }, raw: null };
-  }
-  const decoded = codec.decode(raw);
-  if (decoded.ok) {
-    return {
-      result: { status: 'loaded', progress: decoded.progress, migratedFrom: decoded.migratedFrom },
-      raw,
-    };
-  }
-  if (decoded.error.code === 'future-version') {
-    return {
-      result: {
-        status: 'future-version',
-        version: futureVersionOf(decoded.error),
-        error: decoded.error,
-      },
-      raw,
-    };
-  }
-  // `invalid-json`, `invalid-shape`, `unsupported-version`, `missing-migration` :
-  // récupérables (import ou réinitialisation explicite), donc statut `corrupt`.
-  return { result: { status: 'corrupt', error: decoded.error, backupKey: null }, raw };
-}
-
-/** Version rencontrée, extraite des détails d'erreur du décodeur. */
-function futureVersionOf(error: ProgressError): number {
-  const reported = error.details?.['version'];
-  const parsed = reported === undefined ? Number.NaN : Number(reported);
-  return Number.isFinite(parsed) ? parsed : 0;
+  return readProgressWithRaw({ storage: services.storage, clock: services.clock, codec });
 }
 
 /**
