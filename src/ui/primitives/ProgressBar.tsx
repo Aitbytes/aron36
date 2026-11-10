@@ -30,6 +30,10 @@ export function ProgressBar({
   const safeMax = max > 0 ? max : 1;
   const clamped = Math.min(safeMax, Math.max(0, value));
   const percent = (clamped / safeMax) * 100;
+  // `inline-size` n'accepte pas d'espace avant le `%` : `0 %` est une déclaration
+  // invalide, silencieusement ignorée, et le remplissage reprend 100 % de largeur.
+  // D'où deux formes : une pour le style, une pour le texte accessible.
+  const percentStyle = `${String(percent)}%`;
   const percentLabel = `${String(Math.round(percent))} %`;
 
   return (
@@ -42,7 +46,7 @@ export function ProgressBar({
       aria-valuenow={clamped}
       aria-valuetext={percentLabel}
     >
-      <div className={cx(styles.fill, styles[tone])} style={{ inlineSize: percentLabel }} />
+      <div className={cx(styles.fill, styles[tone])} style={{ inlineSize: percentStyle }} />
     </div>
   );
 }

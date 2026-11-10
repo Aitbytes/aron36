@@ -300,11 +300,22 @@ export function TrainScreen() {
       </header>
 
       {progress === null ? null : (
-        <ProgressBar
-          value={progress.index}
-          max={progress.total}
-          label={t('train.progressLabel', { current: progress.index, total: progress.total })}
-        />
+        <div className={styles.sessionProgress}>
+          <p className={styles.sessionProgressText}>
+            {t('train.progressText', {
+              current: Math.min(progress.index + 1, progress.total),
+              total: progress.total,
+            })}
+          </p>
+          <ProgressBar
+            value={progress.index}
+            max={progress.total}
+            label={t('train.progressLabel', {
+              current: progress.index,
+              total: progress.total,
+            })}
+          />
+        </div>
       )}
 
       {failure === null ? null : (
@@ -709,10 +720,10 @@ function AnswerField({
       <label className={styles.label} htmlFor={`${numberHintId}-answer`}>
         {t('train.answerLabel')}
       </label>
-      <input
+      <textarea
         id={`${numberHintId}-answer`}
-        className={styles.input}
-        type="text"
+        className={styles.textarea}
+        rows={3}
         value={answerText}
         onChange={(event) => onAnswerChange(event.target.value)}
         placeholder={t('train.answerPlaceholder')}
