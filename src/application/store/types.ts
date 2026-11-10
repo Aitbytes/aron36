@@ -4,11 +4,12 @@ import type { PersistedProgress, ProgressError } from '@/domain/progress/types';
 import type {
   AnswerFeedback,
   SessionAnswer,
+  SessionLog,
   SessionState,
   SessionSummary,
 } from '@/domain/session/types';
 import type { PersonalHook } from '@/domain/memory/types';
-import type { ScheduledReview } from '@/domain/srs/types';
+import type { ReviewLog, ScheduledReview } from '@/domain/srs/types';
 
 /**
  * Store applicatif (Phase 3).
@@ -66,11 +67,25 @@ export type AppAction =
       readonly feedback: AnswerFeedback;
       readonly scheduledReview: ScheduledReview | null;
       readonly xp: XpAward;
+      /**
+       * Journal de révision fabriqué par le cas d'usage, utilisé **tel quel** :
+       * son `id` provient de `IdPort.newReviewLogId()`, un espace d'identifiants
+       * distinct de `SessionAnswer.itemId`. `null` pour un prétest (L18), qui
+       * n'est jamais journalisé.
+       */
+      readonly reviewLog: ReviewLog | null;
     }
   | {
       readonly type: 'session/completed';
       readonly summary: SessionSummary;
       readonly xp: XpAward;
+      /**
+       * Journal de session fabriqué par le cas d'usage `finishSession` : la
+       * fenêtre L17 y est déduite de l'heure **locale** via `ClockPort`, que le
+       * réducteur ne possède pas. Il est ici ajouté à
+       * `progress.sessionLogs` (troncature `MAX_SESSION_LOG_ENTRIES`).
+       */
+      readonly sessionLog: SessionLog;
     }
   | { readonly type: 'session/abandoned' }
   | { readonly type: 'ui/navigate'; readonly screen: AppScreen }

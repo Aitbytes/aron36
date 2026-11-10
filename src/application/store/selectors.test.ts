@@ -168,6 +168,7 @@ describe("sélecteurs d'affichage — projections pures", () => {
         },
         scheduledReview: null,
         xp: { amount: 12, reason: 'production-answer', breakdown: null, questionId: 1, at: NOW },
+        reviewLog: null,
       },
     );
 
@@ -209,5 +210,6 @@ function toAnsweredAction(submission: ReturnType<typeof answerCurrentItem>) {
       questionId: submission.answer.questionId,
       at: NOW,
     } as const,
+    reviewLog: null,
   };
 }
