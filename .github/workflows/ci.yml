@@ -44,8 +44,11 @@ jobs:
       - name: Typecheck
         run: npm run typecheck
 
-      - name: Test
-        run: npm run test
-
+      # Le build précède les tests : les tests du service worker lisent le VRAI
+      # `dist/`. Placés après, ils étaient silencieusement ignorés en CI (pas de
+      # `dist/`), et le précache n'était donc jamais vérifié sur un vrai build.
       - name: Build
         run: npm run build
+
+      - name: Test
+        run: npm run test
