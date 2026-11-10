@@ -75,10 +75,20 @@ export function reduce(state: AppState, action: AppAction): AppState {
     case 'progress/hydrated':
       return { ...state, ready: true, progress: action.progress };
 
-    case 'progress/replaced':
+    case 'progress/replaced': {
       // Chemin de récupération (import) : une donnée saine résout la dernière
-      // erreur de persistance, on la purge.
-      return { ...state, progress: action.progress, lastError: null };
+      // erreur de persistance, on la purge. Comme `progress/reset`, l'import
+      // remplace **absolument** : la session courante (dont les items
+      // référencent des cartes étrangères) et son feedback ne survivent pas.
+      // L'action reste idempotente : elle installe un état absolu.
+      const cleared: AppState = {
+        ...state,
+        progress: action.progress,
+        lastError: null,
+        session: null,
+      };
+      return withUi(cleared, { activeSessionId: null, feedback: null });
+    }
 
     case 'progress/saved':
       return withProgress(state, { ...state.progress, savedAt: action.savedAt });

@@ -136,8 +136,6 @@ describe('prétest — deviner avant de voir (L18)', () => {
     }
     const finished = harness.useCases.finishSession.execute({
       sessionId: started.plan.id,
-      now: harness.clock.now(),
-      window: 'morning',
     });
     // Bonus de complétion seulement : aucun XP de production n'a été gagné.
     expect(finished.xp.amount).toBe(10);

@@ -77,8 +77,6 @@ describe('parcours complet — démarrer, répondre, clôturer', () => {
     // Clôture : journal complet, XP de fin, persistance.
     const finished = harness.useCases.finishSession.execute({
       sessionId: started.plan.id,
-      now: harness.clock.now(),
-      window: 'morning',
     });
     expect(finished.summary.itemCount).toBe(3);
     expect(finished.summary.answeredCount).toBe(3);
@@ -145,8 +143,6 @@ describe('parcours complet — démarrer, répondre, clôturer', () => {
     harness.clock.advance(5_000);
     const finished = harness.useCases.finishSession.execute({
       sessionId,
-      now: harness.clock.now(),
-      window: 'morning',
     });
 
     // durée exacte : 6 avances de 5 s depuis le démarrage (30 000 ms).
@@ -154,6 +150,10 @@ describe('parcours complet — démarrer, répondre, clôturer', () => {
     // précision pondérée exacte : (1 + 0 + 1 + 1 + 1) / 5.
     expect(finished.summary.accuracy).toBeCloseTo(0.8, 10);
     expect(finished.summary.correctCount).toBe(4);
+    // L8/L17 : le résumé valorise l'oral et porte la fenêtre de journée, sans
+    // relire les journaux.
+    expect(finished.summary.spokenCount).toBe(spokenDeclarations);
+    expect(finished.summary.window).toBe('morning');
     // Session mixte : exactement un QCM (plafond 20 % de 5 items).
     expect(finished.summary.itemCount).toBe(5);
     const stored = readStored(harness);

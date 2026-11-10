@@ -52,8 +52,6 @@ function runOneAnswer(harness: TestHarness, grade: ReviewGrade = 'good'): string
   });
   const finished = harness.useCases.finishSession.execute({
     sessionId: started.plan.id,
-    now: harness.clock.now(),
-    window: 'morning',
   });
   return output.scheduledReview === null && finished.summary.itemCount === 1
     ? finished.summary.sessionId

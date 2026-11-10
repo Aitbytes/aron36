@@ -1,5 +1,5 @@
 import { ACCURACY_CREDIT } from '@/domain/shared/types';
-import type { EpochMs, Ratio } from '@/domain/shared/types';
+import type { EpochMs, Ratio, SessionWindow } from '@/domain/shared/types';
 import type { SessionSummary } from '@/domain/session/types';
 import type { SessionState } from '@/domain/session/types';
 
@@ -76,11 +76,18 @@ export function tallySession(state: SessionState): SessionTally {
   };
 }
 
-/** Résumé affichable d'une session, à l'instant `endedAt`. */
+/**
+ * Résumé affichable d'une session, à l'instant `endedAt`.
+ *
+ * `window` (L17) est **fournie** par l'appelant : elle vient de `ClockPort`, et
+ * le résumé la porte pour que l'écran de bilan valorise l'oral (`spokenCount`)
+ * et le moment de la journée sans relire les journaux.
+ */
 export function buildSessionSummary(
   state: SessionState,
   endedAt: EpochMs,
   productionXpAwarded: number,
+  window: SessionWindow,
 ): SessionSummary {
   const tally = tallySession(state);
   return {
@@ -92,6 +99,8 @@ export function buildSessionSummary(
     accuracy: tally.accuracy,
     durationMs: endedAt - state.startedAt,
     xpAwarded: productionXpAwarded,
+    spokenCount: tally.spokenCount,
+    window,
     byDirection: tally.byDirection,
   };
 }

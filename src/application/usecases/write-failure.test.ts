@@ -94,8 +94,6 @@ describe('writeFailure — échec d\u2019écriture sans perte silencieuse', () =
 
     const finished = harness.useCases.finishSession.execute({
       sessionId: started.plan.id,
-      now: harness.clock.now(),
-      window: 'morning',
     });
 
     expect(finished.summary.itemCount).toBe(1);

@@ -2,12 +2,10 @@ import type {
   ActId,
   ConfidenceRating,
   DurationMs,
-  EpochMs,
   QuestionId,
   RandomSeed,
   ReviewGrade,
   SessionId,
-  SessionWindow,
 } from '@/domain/shared/types';
 import type { BadgeId, PlayerSettings, XpAward } from '@/domain/gamification/types';
 import type { PersonalHook, PersonalHookKind } from '@/domain/memory/types';
@@ -140,18 +138,16 @@ export interface SubmitAnswerOutput {
 }
 
 /**
- * Entrée de fin de session (abandon ou clôture explicite).
+ * Entrée de fin de session (clôture explicite).
  *
- * `now` et `window` sont fournis par la couche application : le domaine n'a
- * aucune source de temps, et `SessionLog.window` (L17) doit être calculé depuis
- * l'heure **locale** (`ClockPort.dayKey` / fuseau), pas depuis le domaine.
+ * L'instant et la fenêtre de journée ne sont **pas** des entrées : ils sont
+ * déduits de `ClockPort` par le cas d'usage (`SessionLog.window`, L17, suit
+ * l'heure locale). Cette signature ne porte donc que la session à clôturer
+ * (revue Phase 3 : les anciens champs `now`/`window` étaient exigés puis
+ * ignorés, un contrat trompeur).
  */
 export interface FinishSessionInput {
   readonly sessionId: SessionId;
-  /** Instant de clôture, fourni par `ClockPort.now()`. */
-  readonly now: EpochMs;
-  /** Fenêtre de journée de la session, calculée depuis l'heure locale. */
-  readonly window: SessionWindow;
 }
 
 /** Sortie de fin de session. */

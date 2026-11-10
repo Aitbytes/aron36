@@ -428,7 +428,7 @@ export function createUseCases(
       xp,
       newlyUnlockedBadges,
       updatedProgress: savedProgress,
-      summary: completed ? buildSessionSummary(nextSession, now, run.productionXp) : null,
+      summary: completed ? buildSessionSummary(nextSession, now, run.productionXp, window) : null,
       // (k) Échec d'écriture non fatal : reporté pour l'avertissement UI
       // (§ 5.4), jamais lancé — l'état mémoire reste la référence.
       writeFailure: repository.lastWriteFailure(),
@@ -440,12 +440,11 @@ export function createUseCases(
   function finishSession(input: FinishSessionInput): FinishSessionOutput {
     const run = requireRun(input.sessionId);
     // L17 : `endedAt` **et** `window` sont déduits de l'horloge injectée (jamais
-    // de `Date`, jamais d'heure fabriquée par le domaine). Les champs homonymes
-    // de l'entrée sont acceptés pour compatibilité contractuelle mais
-    // supplantés : `ClockPort` est la source unique de temps.
+    // de `Date`, jamais d'heure fabriquée par le domaine). `FinishSessionInput`
+    // ne porte donc que la session : `ClockPort` est la source unique de temps.
     const endedAt = services.clock.now();
     const window = resolveSessionWindow(services.clock, endedAt);
-    const summary = buildSessionSummary(run.state, endedAt, run.productionXp);
+    const summary = buildSessionSummary(run.state, endedAt, run.productionXp, window);
     const tally = tallySession(run.state);
     const xp = xpCalculator.forSession(
       {
@@ -521,7 +520,8 @@ export function createUseCases(
   function abandonSession(input: AbandonSessionInput): AbandonSessionOutput {
     const run = requireRun(input.sessionId);
     const endedAt = services.clock.now();
-    const summary = buildSessionSummary(run.state, endedAt, run.productionXp);
+    const window = resolveSessionWindow(services.clock, endedAt);
+    const summary = buildSessionSummary(run.state, endedAt, run.productionXp, window);
     // Oubli immédiat : plus aucune réponse ne sera acceptée pour cette session
     // (sans quoi une session « abandonnée » continuerait d'écrire, majeur A7).
     runs.delete(input.sessionId);
@@ -531,7 +531,6 @@ export function createUseCases(
       return { summary, updatedProgress: repository.requireProgress(), writeFailure: null };
     }
     const tally = tallySession(run.state);
-    const window = resolveSessionWindow(services.clock, endedAt);
     const sessionLog: SessionLog = {
       sessionId: input.sessionId,
       mode: run.state.plan.mode,

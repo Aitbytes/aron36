@@ -198,14 +198,30 @@ describe('réducteur — une action, un état', () => {
     expect(next.ui).toEqual(state.ui);
   });
 
-  it('progress/replaced remplace la progression et purge la dernière erreur', () => {
-    const state = { ...makeState(), lastError: makeError('invalid-json') };
+  it("progress/replaced remplace la progression, purge l'erreur et la session étrangère", () => {
+    const session = startReviewSession(1);
+    const submission = answerCurrentItem(session);
+    const state = {
+      ...makeState(),
+      lastError: makeError('invalid-json'),
+      session,
+      ui: {
+        ...makeState().ui,
+        activeSessionId: session.plan.id,
+        feedback: { answer: submission.answer, feedback: feedbackPlaceholder() },
+      },
+    };
     const imported = makeProgress({ player: { ...makeProgress().player, totalXp: 99 } });
 
     const next = reduce(state, { type: 'progress/replaced', progress: imported });
 
     expect(next.progress).toBe(imported);
     expect(next.lastError).toBeNull();
+    // Aligné sur `progress/reset` : une session étrangère (et son feedback) ne
+    // survit pas à un import, sinon ses items référencent des cartes importées.
+    expect(next.session).toBeNull();
+    expect(next.ui.activeSessionId).toBeNull();
+    expect(next.ui.feedback).toBeNull();
   });
 
   it('progress/saved avance uniquement savedAt', () => {
@@ -772,6 +788,10 @@ function makeSummary(session: SessionState): SessionSummary {
     accuracy: session.answers.length === 0 ? 0 : correct / session.answers.length,
     durationMs: 5_000,
     xpAwarded: 12,
+    spokenCount: session.answers.filter(
+      (answer) => !answer.isPretest && answer.channel !== 'written',
+    ).length,
+    window: 'morning',
     byDirection: {
       'order-to-question': byDirection('order-to-question'),
       'keyword-to-question': byDirection('keyword-to-question'),
