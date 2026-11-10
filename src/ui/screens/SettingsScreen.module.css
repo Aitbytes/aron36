@@ -1,0 +1,82 @@
+.screen {
+  display: grid;
+  gap: var(--space-4);
+}
+
+.title {
+  font-size: var(--text-xl);
+}
+
+.muted {
+  color: var(--color-text-muted);
+  font-size: var(--text-sm);
+}
+
+.warning {
+  color: var(--color-danger);
+  font-size: var(--text-sm);
+}
+
+/* ── Formulaires ────────────────────────────────────────────────────────── */
+
+.group {
+  display: grid;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.legend {
+  padding: 0;
+  color: var(--color-text-muted);
+  font-size: var(--text-sm);
+}
+
+.option {
+  display: flex;
+  gap: var(--space-3);
+  align-items: center;
+  min-block-size: var(--target-min-size);
+  cursor: pointer;
+}
+
+.option input {
+  inline-size: 1.25rem;
+  block-size: 1.25rem;
+  accent-color: var(--color-accent);
+}
+
+/* ── Données ────────────────────────────────────────────────────────────── */
+
+.dataActions {
+  margin-block-start: var(--space-3);
+}
+
+.dataRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-4);
+  align-items: center;
+}
+
+/* Le champ fichier est déclenché par un bouton natif voisin : jamais un
+ * contrôle inaccessible. */
+.fileInput {
+  display: none;
+}
+
+.resetField {
+  display: grid;
+  gap: var(--space-2);
+  margin-block-start: var(--space-4);
+}
+
+.resetField input {
+  min-block-size: var(--target-min-size);
+  padding-inline: var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-raised);
+  color: var(--color-text);
+}
