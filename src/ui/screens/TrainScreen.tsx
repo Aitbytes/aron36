@@ -557,11 +557,14 @@ function ItemStage({
         </div>
       ) : null}
 
-      {item.isPretest ? (
+      {revealed ? null : item.isPretest ? (
         // L18 : un prétest ne s'aide pas — aucun indice, sinon la « devinette »
         // n'en serait plus une (et `full-answer` donnerait la réponse).
         <p className={styles.muted}>{t('train.pretest.noHints')}</p>
       ) : (
+        // Les indices ne sont proposés qu'en phase `asking` : une fois la
+        // réponse affichée, « Révéler un indice » n'aurait plus de sens et
+        // renverrait une erreur trompeuse (revue Phase 4).
         <HintsPanel
           hints={item.hints}
           revealedHints={session.revealedHints}

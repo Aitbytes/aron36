@@ -159,6 +159,34 @@ describe('TrainScreen — indices progressifs', () => {
     expect(screen.getByText('Tous les indices sont révélés.')).toBeInTheDocument();
   });
 
+  it('masque les indices dès que la réponse est révélée', async () => {
+    const user = userEvent.setup();
+    const harness = createUiHarness();
+    startSession(harness, { mode: 'learning', questionIds: [7], maxItems: 1 });
+    renderTrain(harness);
+
+    expect(screen.getByRole('button', { name: 'Révéler un indice' })).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Voir la réponse' }));
+
+    expect(screen.queryByRole('heading', { name: 'Indices' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Révéler un indice' })).toBeNull();
+  });
+
+  it('masque les indices après une révélation locale (confiance requise)', async () => {
+    const user = userEvent.setup();
+    const harness = createUiHarness({
+      progress: makeProgress({ cards: { '7': makeDueCard(7, 0) } }),
+    });
+    startSession(harness, { mode: 'review', questionIds: [7], maxItems: 1 });
+    renderTrain(harness);
+
+    await user.click(screen.getByRole('button', { name: '3 — moyen' }));
+    await user.click(screen.getByRole('button', { name: 'Voir la réponse' }));
+
+    expect(screen.queryByRole('heading', { name: 'Indices' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Révéler un indice' })).toBeNull();
+  });
+
   it('n’affiche aucun bouton quand l’item n’a pas d’indice', () => {
     const harness = createUiHarness({ progress: makeProgress() });
     startSession(harness, { mode: 'grand-oral', questionIds: [7], maxItems: 1 });
