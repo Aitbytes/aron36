@@ -391,6 +391,8 @@ export const frMessages = {
   'settings.resetWordHint':
     'Le bouton de confirmation reste inactif tant que le mot n’est pas exact.',
 
+  'train.progressText': 'Question {current} sur {total}',
+
   // ── Grand Oral (Phase 5) ─────────────────────────────
   'grandOral.title': 'Grand Oral',
   'grandOral.description':

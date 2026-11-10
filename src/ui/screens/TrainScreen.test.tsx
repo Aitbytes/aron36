@@ -88,7 +88,7 @@ describe('TrainScreen — rendu des directions de drill', () => {
 
     expect(screen.getByText('Acte 3, position 1')).toBeInTheDocument();
     expect(screen.queryByText('Question 25')).toBeNull();
-    expect(screen.getByLabelText('Votre réponse')).toHaveAttribute('type', 'text');
+    expect(screen.getByLabelText('Votre réponse').tagName).toBe('TEXTAREA');
   });
 
   it('keyword : met en avant le mot-clé et propose la saisie libre', () => {
@@ -98,7 +98,7 @@ describe('TrainScreen — rendu des directions de drill', () => {
 
     expect(screen.getByText('Mot-clé')).toBeInTheDocument();
     expect(screen.getByText('mot-cle-25')).toBeInTheDocument();
-    expect(screen.getByLabelText('Votre réponse')).toHaveAttribute('type', 'text');
+    expect(screen.getByLabelText('Votre réponse').tagName).toBe('TEXTAREA');
   });
 
   it('image : présente l’image mentale et propose la saisie libre', () => {
@@ -108,7 +108,7 @@ describe('TrainScreen — rendu des directions de drill', () => {
 
     expect(screen.getByText('Image mentale')).toBeInTheDocument();
     expect(screen.getByText('image mentale 25')).toBeInTheDocument();
-    expect(screen.getByLabelText('Votre réponse')).toHaveAttribute('type', 'text');
+    expect(screen.getByLabelText('Votre réponse').tagName).toBe('TEXTAREA');
   });
 
   it('number : affiche « Question 25 » et propose la saisie libre', () => {
@@ -117,7 +117,7 @@ describe('TrainScreen — rendu des directions de drill', () => {
     renderTrain(harness);
 
     expect(screen.getByText('Question 25')).toBeInTheDocument();
-    expect(screen.getByLabelText('Votre réponse')).toHaveAttribute('type', 'text');
+    expect(screen.getByLabelText('Votre réponse').tagName).toBe('TEXTAREA');
   });
 
   it('question : affiche l’énoncé, la consigne et un champ numérique', () => {

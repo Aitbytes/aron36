@@ -1,3 +1,4 @@
+import { DEFAULT_MASTERY_CRITERIA } from '@/domain/mastery/types';
 import { useCallback, useState } from 'react';
 
 import { selectDueCount, selectLevel, selectStreak } from '@/application/store';
@@ -166,7 +167,7 @@ export function HomeScreen() {
                 {t('home.nextActRequirement', {
                   act: localize(nextAct.title),
                   previous: localize(previousActTitle),
-                  ratio: Math.round(previousAct.ratio * 100),
+                  ratio: Math.round(DEFAULT_MASTERY_CRITERIA.actUnlockRatio * 100),
                 })}
               </p>
             )}

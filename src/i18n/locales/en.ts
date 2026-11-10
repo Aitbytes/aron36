@@ -375,6 +375,8 @@ export const enMessages: Record<MessageKey, string> = {
   'settings.resetWordHint':
     'The confirmation button stays disabled until the word matches exactly.',
 
+  'train.progressText': 'Question {current} of {total}',
+
   // ── Grand Oral (Phase 5) ─────────────────────────────
   'grandOral.title': 'The Grand Oral',
   'grandOral.description':
