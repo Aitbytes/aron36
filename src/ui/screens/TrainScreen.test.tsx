@@ -289,6 +289,19 @@ describe('TrainScreen — prétest (L18)', () => {
     expect(screen.queryByRole('heading', { name: 'Correction' })).toBeNull();
     expect(screen.queryByText('Réponse attendue')).toBeNull();
   });
+
+  it('n’expose aucun indice en prétest, même quand le plan en construit', () => {
+    const harness = createUiHarness({ progress: makeProgress() });
+    startSession(harness, { mode: 'discovery', questionIds: [7], maxItems: 1 });
+    renderTrain(harness);
+
+    // Le plan en porte (politique progressive) mais l'écran ne doit pas les
+    // offrir : sinon `full-answer` donnerait la réponse du prétest.
+    expect(firstItem(harness).hints.length).toBeGreaterThan(0);
+    expect(screen.queryByRole('heading', { name: 'Indices' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Révéler un indice' })).toBeNull();
+    expect(screen.getByText('Aucun indice en prétest : devine de mémoire.')).toBeInTheDocument();
+  });
 });
 
 describe('TrainScreen — abandon', () => {

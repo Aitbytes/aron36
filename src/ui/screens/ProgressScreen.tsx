@@ -10,7 +10,14 @@ import type { CardState } from '@/domain/srs/types';
 import { useLocalizedText, useT } from '@/i18n';
 import type { MessageKey, Translator } from '@/i18n';
 import { Button, Dialog, Panel, ProgressBar, cx } from '@/ui/primitives';
-import { useActions, useAppState, useClock, useMastery } from '@/ui/store';
+import {
+  ACTION_FAILURE_MESSAGE_KEYS,
+  useActions,
+  useAppState,
+  useClock,
+  useMastery,
+} from '@/ui/store';
+import type { ActionFailureReason } from '@/ui/store';
 
 import { LoadingScreen } from './LoadingScreen';
 import { deriveNodeState } from './nodeState';
@@ -167,6 +174,7 @@ export function ProgressScreen() {
   const clock = useClock();
   const mastery = useMastery();
   const [selectedId, setSelectedId] = useState<QuestionId | null>(null);
+  const [startFailure, setStartFailure] = useState<ActionFailureReason | null>(null);
 
   if (!state.ready) {
     return <LoadingScreen />;
@@ -186,10 +194,36 @@ export function ProgressScreen() {
     }
   };
 
+  /**
+   * Découverte de l'acte (L18) : point d'entrée du mode `discovery`, jusque-là
+   * inatteignable depuis l'interface. Les items de ce mode sont des prétests
+   * (devinette non corrigée) — l'écran de jeu les traite sans indice ni
+   * feedback correctif.
+   */
+  const discoverAct = (actId: ActId, unlocked: boolean): void => {
+    if (!unlocked) {
+      return;
+    }
+    const result = actions.startSession({ mode: 'discovery', actIds: [actId] });
+    if (result.ok) {
+      setStartFailure(null);
+      actions.navigate('train');
+      return;
+    }
+    // Ex. : tous les items de l'acte sont déjà connus (`empty-selection`).
+    setStartFailure(result.reason);
+  };
+
   return (
     <div className={styles.screen}>
       <h1 className={styles.title}>{t('progress.title')}</h1>
       <p className={styles.description}>{t('progress.description')}</p>
+
+      {startFailure === null ? null : (
+        <p role="alert" className={styles.error}>
+          {t(ACTION_FAILURE_MESSAGE_KEYS[startFailure])}
+        </p>
+      )}
 
       {mastery === null ? (
         <p role="alert" className={styles.error}>
@@ -206,6 +240,7 @@ export function ProgressScreen() {
             selectedId={selectedId}
             onSelect={setSelectedId}
             onReviewAct={reviewAct}
+            onDiscoverAct={discoverAct}
           />
         ))
       )}
@@ -247,9 +282,19 @@ interface ActMapProps {
   readonly selectedId: QuestionId | null;
   readonly onSelect: (questionId: QuestionId) => void;
   readonly onReviewAct: (actId: ActId, unlocked: boolean) => void;
+  readonly onDiscoverAct: (actId: ActId, unlocked: boolean) => void;
 }
 
-function ActMap({ actId, actTitle, mastery, now, selectedId, onSelect, onReviewAct }: ActMapProps) {
+function ActMap({
+  actId,
+  actTitle,
+  mastery,
+  now,
+  selectedId,
+  onSelect,
+  onReviewAct,
+  onDiscoverAct,
+}: ActMapProps) {
   const t = useT();
   const localize = useLocalizedText();
   const state = useAppState();
@@ -331,6 +376,16 @@ function ActMap({ actId, actTitle, mastery, now, selectedId, onSelect, onReviewA
 
       <div className={styles.actActions}>
         <Button
+          onClick={() => {
+            onDiscoverAct(actId, unlocked);
+          }}
+          disabled={!unlocked}
+          aria-describedby={unlocked ? undefined : reasonId}
+        >
+          {t('progress.act.discover', { act: actId })}
+        </Button>
+        <Button
+          variant="secondary"
           onClick={() => {
             onReviewAct(actId, unlocked);
           }}

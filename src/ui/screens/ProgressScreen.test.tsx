@@ -144,6 +144,17 @@ describe('carte de progression', () => {
     expect(within(dialog).getByText(question.mentalImage.fr)).toBeInTheDocument();
   });
 
+  it('« Découvrir l’acte » lance le mode discovery (L18), jusqu’ici inatteignable', async () => {
+    const user = userEvent.setup();
+    const { harness, startSession } = renderProgress(buildProgressWithFiveStates());
+
+    await user.click(screen.getByRole('button', { name: 'Découvrir l’acte 1' }));
+
+    expect(startSession).toHaveBeenCalledWith({ mode: 'discovery', actIds: [1] });
+    expect(harness.store.getState().session?.plan.mode).toBe('discovery');
+    expect(harness.store.getState().ui.screen).toBe('train');
+  });
+
   it('« Réviser cet acte » démarre une session avec actIds', async () => {
     const user = userEvent.setup();
     const { startSession } = renderProgress(buildProgressWithFiveStates());

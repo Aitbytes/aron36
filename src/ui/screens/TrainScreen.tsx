@@ -528,11 +528,17 @@ function ItemStage({
         </div>
       ) : null}
 
-      <HintsPanel
-        hints={item.hints}
-        revealedHints={session.revealedHints}
-        onReveal={onRevealHint}
-      />
+      {item.isPretest ? (
+        // L18 : un prétest ne s'aide pas — aucun indice, sinon la « devinette »
+        // n'en serait plus une (et `full-answer` donnerait la réponse).
+        <p className={styles.muted}>{t('train.pretest.noHints')}</p>
+      ) : (
+        <HintsPanel
+          hints={item.hints}
+          revealedHints={session.revealedHints}
+          onReveal={onRevealHint}
+        />
+      )}
 
       {requiresConfidence && !revealed ? (
         <section className={styles.confidence} aria-labelledby="confidence-title">

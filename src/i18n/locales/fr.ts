@@ -171,6 +171,7 @@ export const frMessages = {
   'train.pretest.submit': 'Valider ma devinette',
   'train.pretest.acknowledged':
     'Devinette enregistrée. La correction arrivera à la prochaine tentative.',
+  'train.pretest.noHints': 'Aucun indice en prétest : devine de mémoire.',
   'train.hints.title': 'Indices',
   'train.hints.reveal': 'Révéler un indice',
   'train.hints.used': 'Indices utilisés : {count}',
@@ -251,6 +252,7 @@ export const frMessages = {
   'progress.act.locked': 'Acte verrouillé',
   'progress.act.lockedReason': 'Maîtrise l’acte {previous} à {ratio} % pour ouvrir l’acte {act}.',
   'progress.act.review': 'Réviser cet acte',
+  'progress.act.discover': 'Découvrir l’acte {act}',
   'progress.lockedSession': 'Acte verrouillé : aucune session ne peut démarrer.',
   'progress.detail.title': 'Question {number}',
   'progress.detail.question': 'Question',
