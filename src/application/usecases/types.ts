@@ -138,6 +138,27 @@ export interface FinishSessionOutput {
   readonly writeFailure: ProgressError | null;
 }
 
+/**
+ * Entrée d'abandon d'une session en cours.
+ *
+ * L'abandon clôt la session côté cas d'usage : le `runs` interne oublie la
+ * session, de sorte qu'aucune réponse ultérieure n'est plus acceptée
+ * (`unknown-session`). Anti-objectif respecté : aucune punition, aucune perte
+ * de progression déjà acquise.
+ */
+export interface AbandonSessionInput {
+  readonly sessionId: SessionId;
+}
+
+/** Sortie d'abandon : résumé partiel et progression éventuellement enrichie. */
+export interface AbandonSessionOutput {
+  /** Vue agrégée de ce qui a été répondu avant l'abandon. */
+  readonly summary: SessionSummary;
+  readonly updatedProgress: PersistedProgress;
+  /** Échec de l'écriture du journal partiel, ou `null` (jamais lancé — § 5.4). */
+  readonly writeFailure: ProgressError | null;
+}
+
 /** Entrée d'enregistrement d'une accroche personnelle (L10, L11). */
 export interface SaveHookInput {
   readonly questionId: QuestionId;
@@ -209,6 +230,7 @@ export interface UseCases {
   readonly startSession: UseCase<StartSessionInput, StartSessionOutput>;
   readonly submitAnswer: UseCase<SubmitAnswerInput, SubmitAnswerOutput>;
   readonly finishSession: UseCase<FinishSessionInput, FinishSessionOutput>;
+  readonly abandonSession: UseCase<AbandonSessionInput, AbandonSessionOutput>;
   readonly saveHook: UseCase<SaveHookInput, SaveHookOutput>;
   readonly importProgress: UseCase<ImportProgressInput, ImportProgressOutput>;
   readonly exportProgress: UseCase<void, ExportProgressOutput>;

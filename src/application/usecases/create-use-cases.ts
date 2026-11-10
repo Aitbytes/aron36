@@ -44,6 +44,8 @@ import { buildSessionSummary, tallySession } from './summary';
 import { progressCodec } from '@/application/progress';
 import type { ProgressCodecFactory } from '@/application/progress';
 import type {
+  AbandonSessionInput,
+  AbandonSessionOutput,
   AppServices,
   EvaluateMasteryOutput,
   ExportProgressOutput,
@@ -64,7 +66,7 @@ import type {
 } from './types';
 
 /**
- * Les 8 cas d'usage du contrat `UseCases` (Phase 3-C).
+ * Les cas d'usage du contrat `UseCases` (Phase 3-C et suivantes).
  *
  * Chaque cas d'usage combine le domaine (implémentations pures importées
  * directement : XP, séries, quêtes, collection, badges, métriques, maîtrise,
@@ -476,6 +478,46 @@ export function createUseCases(
     };
   }
 
+  /* ── 3 bis. abandonSession ────────────────────────────────────────────── */
+
+  function abandonSession(input: AbandonSessionInput): AbandonSessionOutput {
+    const run = requireRun(input.sessionId);
+    const endedAt = services.clock.now();
+    const summary = buildSessionSummary(run.state, endedAt, run.productionXp);
+    // Oubli immédiat : plus aucune réponse ne sera acceptée pour cette session
+    // (sans quoi une session « abandonnée » continuerait d'écrire, majeur A7).
+    runs.delete(input.sessionId);
+    if (run.state.answers.length === 0) {
+      // Aucune réponse : aucun journal (un abandon vierge n'est pas une
+      // session), aucune écriture, aucun échec à reporter.
+      return { summary, updatedProgress: repository.requireProgress(), writeFailure: null };
+    }
+    const tally = tallySession(run.state);
+    const window = resolveSessionWindow(services.clock, endedAt);
+    const sessionLog: SessionLog = {
+      sessionId: input.sessionId,
+      mode: run.state.plan.mode,
+      planSeed: run.state.plan.seed,
+      startedAt: run.state.startedAt,
+      endedAt,
+      durationMs: endedAt - run.state.startedAt,
+      window,
+      itemCount: tally.itemCount,
+      productionCount: tally.productionCount,
+      discriminationCount: tally.discriminationCount,
+      spokenCount: tally.spokenCount,
+      correctCount: tally.correctCount,
+      accuracy: tally.accuracy,
+      xpAwarded: run.productionXp,
+    };
+    const progress = repository.requireProgress();
+    const savedProgress = repository.save({
+      ...progress,
+      sessionLogs: [...progress.sessionLogs, sessionLog].slice(-MAX_SESSION_LOG_ENTRIES),
+    });
+    return { summary, updatedProgress: savedProgress, writeFailure: repository.lastWriteFailure() };
+  }
+
   /* ── 4. saveHook ──────────────────────────────────────────────────────── */
 
   function saveHook(input: SaveHookInput): SaveHookOutput {
@@ -518,6 +560,10 @@ export function createUseCases(
     if (!result.ok) {
       return result;
     }
+    // Un import remplace tout : les sessions en cours référencent des cartes
+    // et des journaux de l'ancien profil — sans purge, une réponse de
+    // l'ancienne session serait écrite dans le profil importé (majeur A7).
+    runs.clear();
     const savedProgress = repository.save(result.progress);
     return { ok: true, progress: savedProgress, migratedFrom: result.migratedFrom };
   }
@@ -549,6 +595,9 @@ export function createUseCases(
       );
     }
     repository.backupCorruptRaw();
+    // Un profil neuf n'a plus aucune de ces sessions : les conserver faisait
+    // accepter des réponses d'une session de l'ancien profil (majeur A7).
+    runs.clear();
     const locale =
       loaded.status === 'ready' ? loaded.progress.player.settings.locale : ('fr' as const);
     const savedProgress = repository.save(createInitialProgress(services, locale));
@@ -645,6 +694,7 @@ export function createUseCases(
     startSession: { execute: startSession },
     submitAnswer: { execute: submitAnswer },
     finishSession: { execute: finishSession },
+    abandonSession: { execute: abandonSession },
     saveHook: { execute: saveHook },
     importProgress: { execute: importProgress },
     exportProgress: { execute: exportProgress },
