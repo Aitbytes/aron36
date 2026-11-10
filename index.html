@@ -8,6 +8,17 @@
       name="description"
       content="Apprendre par cœur les 36 questions d'Arthur Aron : rappel actif, répétition espacée et imagerie mentale."
     />
+    <!--
+      Application installable (PWA) : manifeste, icônes et métadonnées iOS.
+      Vite réécrit ces URL absolues avec `base: './'` : le build reste relatif,
+      donc valide à la racine d'un domaine comme dans un sous-répertoire.
+    -->
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="icon" href="/icons/aron36.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" sizes="180x180" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="Aron 36" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <title>Aron 36 — Apprendre par cœur</title>
   </head>
   <body>
