@@ -1,0 +1,26 @@
+<svg
+  xmlns="http://www.w3.org/2000/svg"
+  viewBox="0 0 64 64"
+  width="512"
+  height="512"
+  role="img"
+  aria-label="Aron 36"
+>
+  <!--
+    Variante « maskable » : fond plein cadre (le système applique son propre
+    masque) et marque réduite à 85 % puis recentrée, pour que sa diagonale tienne
+    dans le cercle de sécurité de 80 % (rayon 25,6 unités : diagonale de la
+    marque = 58,4 × 0,85 = 49,6 unités).
+  -->
+  <rect width="64" height="64" fill="#161527" />
+  <g
+    transform="translate(3.53 4.8) scale(0.85)"
+    fill="none"
+    stroke-width="5"
+    stroke-linecap="round"
+  >
+    <path d="M20.5 14 A9 9 0 0 1 20.5 32 A9 9 0 0 1 20.5 50" stroke="#ff5e8a" />
+    <path d="M44.5 32 A9 9 0 1 1 44.5 50 A9 9 0 1 1 44.5 32" stroke="#a06bff" />
+    <path d="M52.5 17 A13 13 0 0 0 39.5 32" stroke="#a06bff" />
+  </g>
+</svg>

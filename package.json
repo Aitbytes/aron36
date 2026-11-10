@@ -11,7 +11,7 @@
   },
   "scripts": {
     "dev": "vite",
-    "build": "tsc --noEmit && vite build",
+    "build": "tsc --noEmit && vite build && node scripts/build-sw.mjs",
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest",
@@ -22,7 +22,9 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "traceability": "node scripts/traceability.mjs",
-    "traceability:check": "node scripts/traceability.mjs --check"
+    "traceability:check": "node scripts/traceability.mjs --check",
+    "build:sw": "node scripts/build-sw.mjs",
+    "icons": "node scripts/build-icons.mjs"
   },
   "dependencies": {
     "react": "^19.3.1",

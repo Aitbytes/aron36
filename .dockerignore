@@ -1,0 +1,40 @@
+# Aron 36 — contexte de build Docker.
+#
+# Le build a besoin de : sources (`src/`, `public/`, `index.html`), outillage
+# (`scripts/`, configs, `package.json` + lockfile). Tout le reste est exclu, pour
+# que le contexte reste petit et que l'image ne contienne que le nécessaire.
+
+# Dépendances et artefacts locaux : reconstruits dans l'image.
+node_modules
+dist
+dist-ssr
+coverage
+.vite
+
+# Historique et worktrees des agents : jamais envoyés au démon Docker.
+.git
+.gitignore
+.worktrees
+
+# CI, éditeurs, OS
+.github
+.vscode
+.idea
+.DS_Store
+*.swp
+
+# Tests de bout en bout et rapports
+playwright-report
+test-results
+blob-report
+.playwright
+
+# Documentation : ne participe pas au build
+docs
+CHANGELOG.md
+
+# Secrets et journaux
+.env
+.env.*
+*.log
+npm-debug.log*

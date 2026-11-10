@@ -6,6 +6,7 @@ import { createAppServices, hydrate } from '@/application/bootstrap';
 import { createStore } from '@/application/store';
 import { createUseCases } from '@/application/usecases';
 import { createInfrastructure } from '@/infrastructure';
+import { scheduleServiceWorkerRegistration } from '@/pwa';
 import '@/styles/global.css';
 
 /**
@@ -55,3 +56,17 @@ createRoot(container).render(
     <App store={store} clock={infrastructure.clock} useCases={useCases} />
   </StrictMode>,
 );
+
+/**
+ * Service worker : enregistré **après** le rendu, jamais avant.
+ *
+ * - en développement, aucun worker n'est généré (`sw.js` n'existe qu'après
+ *   `npm run build`) : on n'enregistre rien, pour ne pas mettre en cache une
+ *   arborescence servie par Vite ;
+ * - en production, l'enregistrement est planifié au `load` puis en temps mort, et
+ *   tout échec est silencieux : sans worker, l'application reste utilisable en
+ *   ligne, simplement pas hors ligne.
+ */
+if (import.meta.env.PROD) {
+  scheduleServiceWorkerRegistration();
+}

@@ -384,6 +384,10 @@ export const enMessages: Record<MessageKey, string> = {
 
   'train.progressText': 'Question {current} of {total}',
 
+  // ── Application update (service worker) ──────────────────────
+  'update.available': 'A new version is available',
+  'update.reload': 'Reload',
+
   // ── Grand Oral (Phase 5) ─────────────────────────────
   'grandOral.title': 'The Grand Oral',
   'grandOral.description':

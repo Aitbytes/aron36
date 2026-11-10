@@ -1,0 +1,18 @@
+/*
+ * Bannière de mise à jour : une seule ligne, jamais bloquante, qui se glisse
+ * dans la grille de la coque (aucun positionnement fixe, donc aucun recouvrement
+ * de la navigation ni du contenu).
+ */
+.banner {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface-raised);
+  color: var(--color-text);
+  font-size: var(--text-sm);
+}

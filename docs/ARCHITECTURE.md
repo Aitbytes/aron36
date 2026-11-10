@@ -879,17 +879,19 @@ Cible : **WCAG 2.2 niveau AA**.
 
 ### 13.1 Scripts npm
 
-| Commande                          | Effet                                    |
-| --------------------------------- | ---------------------------------------- |
-| `npm run dev`                     | serveur Vite                             |
-| `npm run build`                   | `tsc --noEmit` + build Vite dans `dist/` |
-| `npm run preview`                 | prévisualisation du build                |
-| `npm test`                        | Vitest en mode CI                        |
-| `npm run test:watch`              | Vitest en mode veille                    |
-| `npm run test:coverage`           | Vitest + couverture V8                   |
-| `npm run lint` / `lint:fix`       | ESLint flat config                       |
-| `npm run typecheck`               | TypeScript strict, sans émission         |
-| `npm run format` / `format:check` | Prettier                                 |
+| Commande                          | Effet                                                                 |
+| --------------------------------- | --------------------------------------------------------------------- |
+| `npm run dev`                     | serveur Vite                                                          |
+| `npm run build`                   | `tsc --noEmit` + build Vite dans `dist/` + génération de `dist/sw.js` |
+| `npm run build:sw`                | régénère `dist/sw.js` seul (dist déjà construit)                      |
+| `npm run preview`                 | prévisualisation du build                                             |
+| `npm test`                        | Vitest en mode CI                                                     |
+| `npm run test:watch`              | Vitest en mode veille                                                 |
+| `npm run test:coverage`           | Vitest + couverture V8                                                |
+| `npm run lint` / `lint:fix`       | ESLint flat config                                                    |
+| `npm run typecheck`               | TypeScript strict, sans émission                                      |
+| `npm run format` / `format:check` | Prettier                                                              |
+| `npm run icons`                   | régénère les PNG d'icônes depuis les SVG (ImageMagick)                |
 
 ### 13.2 Base path
 
@@ -901,7 +903,9 @@ façon relative.
 ### 13.3 Image Docker nginx
 
 Le build est multi-étapes : Node pour compiler, nginx pour servir. Aucun runtime
-Node en production.
+Node en production. Les deux fichiers vivent à la **racine** du dépôt
+(`Dockerfile`, `nginx.conf`) : c'est le contrat attendu par Dokploy, et cela évite
+un dossier `deploy/` pour deux fichiers.
 
 ```dockerfile
 FROM node:24-alpine AS build
@@ -912,38 +916,104 @@ COPY . .
 RUN npm run build
 
 FROM nginx:alpine
+COPY nginx.conf /etc/nginx/conf.d/default.conf
 COPY --from=build /app/dist /usr/share/nginx/html
-COPY deploy/nginx.conf /etc/nginx/conf.d/default.conf
 EXPOSE 80
 HEALTHCHECK --interval=30s --timeout=3s CMD wget -qO- http://127.0.0.1/ >/dev/null || exit 1
 ```
 
-`deploy/nginx.conf` (Phase 5) :
+`nginx.conf` — politique de cache, compression, en-têtes, repli :
 
-```nginx
-server {
-  listen 80;
-  root /usr/share/nginx/html;
-  index index.html;
+| Chemin                              | `Cache-Control`                       | Raison                                                         |
+| ----------------------------------- | ------------------------------------- | -------------------------------------------------------------- |
+| `/assets/*`                         | `public, max-age=31536000, immutable` | noms hachés par Vite : une nouvelle version = une nouvelle URL |
+| `/index.html`                       | `no-cache`                            | référence les assets hachés : un cache figerait la version     |
+| `/sw.js`                            | `no-cache, no-store, must-revalidate` | un worker en cache HTTP gèlerait les mises à jour              |
+| `/icons/*`, `/manifest.webmanifest` | `public, max-age=3600`                | non hachés, modifiés rarement                                  |
+| reste                               | `no-cache` (repli SPA)                |                                                                |
 
-  location /assets/ {
-    expires 1y;
-    add_header Cache-Control "public, immutable";
-  }
+`gzip` est activé sur `text/css`, JavaScript, JSON, `application/manifest+json`,
+`image/svg+xml` et `font/woff2`. En-têtes minimaux sur **chaque** `location`
+(nginx n'hérite pas `add_header` dès qu'un bloc enfant en déclare un) :
+`X-Content-Type-Options: nosniff`, `Referrer-Policy: strict-origin-when-cross-origin`,
+`X-Frame-Options: SAMEORIGIN`.
 
-  location / {
-    try_files $uri $uri/ /index.html;
-  }
-
-  add_header X-Content-Type-Options "nosniff";
-  add_header Referrer-Policy "strict-origin-when-cross-origin";
-}
-```
+**Pas de CSP stricte**, volontairement : une `default-src 'self'` non testée casse
+silencieusement l'application chez les navigateurs anciens, pour un gain nul ici
+(aucune ressource tierce, aucune saisie de texte n'est rendue en HTML). À traiter
+plus tard, avec des tests de bout en bout — de même que `Permissions-Policy`,
+`Cross-Origin-Opener-Policy` et HSTS (au niveau du reverse proxy).
 
 **Dokploy** : application statique, contexte de build = racine du dépôt,
 Dockerfile = `Dockerfile`, port exposé 80, healthcheck `/`. Aucune variable
 d'environnement n'est requise. Le déploiement se fait depuis `main` uniquement
-(release), `develop` restant l'intégration.
+(release), `develop` restant l'intégration. Procédure détaillée :
+[`DEPLOY.md`](./DEPLOY.md).
+
+### 13.4 CI
+
+`.github/workflows/ci.yml` : sur PR vers `develop` et sur push `develop`/`main`,
+avec Node 24 : `npm ci`, `lint`, `typecheck`, `test`, `build`. Aucun secret.
+
+Le job de test couvre aussi le générateur de service worker
+(`scripts/sw.test.mjs`) : exhaustivité du précache, version de cache, échec
+bruyant sur build incohérent, validité syntaxique du `sw.js` produit. Comme `dist/`
+n'existe pas encore à cette étape, le test sur le build réel est ignoré
+(`it.skipIf`) et l'exhaustivité est prouvée sur un `dist/` factice de même forme.
+L'étape `build` exécute ensuite la génération sur le vrai build.
+
+### 13.5 PWA hors-ligne : manifeste, service worker, mises à jour
+
+L'application est **installable** (manifeste) et **utilisable sans réseau**
+(service worker). Aucune dépendance npm : le worker est écrit à la main et généré
+par `scripts/build-sw.mjs`, exécuté par `npm run build`.
+
+**Manifeste** — `public/manifest.webmanifest` : `name`, `short_name` « Aron 36 »,
+`start_url` et `scope` à `./`, `display: standalone`, `lang: fr`, `dir: ltr`,
+`categories`, `background_color` / `theme_color` repris de `index.html`
+(`#0f0e17`), et quatre icônes : 192, 512, maskable 512 (marque réduite à 85 % pour
+tenir dans le cercle de sécurité de 80 %) et une SVG. Les PNG sont des artefacts
+générés depuis `public/icons/*.svg` par `npm run icons` (ImageMagick).
+
+**Génération du worker.** La liste de précache est **dérivée de `dist/`**, donc
+exhaustive par construction : `index.html`, le manifeste, les icônes et tous les
+assets du build. Sont exclus `sw.js` (il se remplacerait à chaque écriture) et les
+`*.map` (lus seulement par les DevTools). Avant d'écrire le worker, le script
+**échoue** si `index.html` cite un fichier absent ou si une icône du manifeste
+manque : on préfère pas de worker à un worker qui précache une application cassée.
+
+**Version de cache.** `aron36-<12 hexadécimaux>`, empreinte SHA-256 de la liste
+`chemin → SHA-256(contenu)`. Deux builds identiques partagent le cache ; un octet
+modifié produit une nouvelle version, et l'ancienne est supprimée à l'activation.
+C'est ce qui empêche de mélanger le HTML d'un build avec les assets d'un autre.
+
+**Stratégies.**
+
+| Requête                                                          | Stratégie                   | Détail                                                                                                                                       |
+| ---------------------------------------------------------------- | --------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| navigation (`mode === 'navigate'`)                               | réseau d'abord, repli cache | repli sur `index.html` précaché ; réponse réseau **non recopiée** dans le cache (le précache est la cohérence HTML + assets d'un même build) |
+| URL présente dans le précache (assets hachés, icônes, manifeste) | cache d'abord               | aucun réseau, aucun revalidation : le nom porte l'empreinte                                                                                  |
+| toute autre requête (autre origine, non précachée, non GET)      | **pas d'interception**      | comportement réseau par défaut, jamais de cache                                                                                              |
+
+**Mise à jour.** Le worker installé **n'appelle pas** `skipWaiting()` : il attend.
+L'interface (`src/pwa/`) détecte le worker en attente, puis affiche une bannière
+discrète et unique ajout d'UI de la phase — « Nouvelle version disponible —
+Recharger » (`role="status"`, donc annoncée sans interrompre). Le clic poste
+`{ type: 'SKIP_WAITING' }` ; le rechargement n'a lieu qu'à `controllerchange`,
+c'est-à-dire quand le nouveau worker sert réellement le nouveau build. Aucun
+rechargement automatique : une session de révision en cours n'est jamais
+interrompue.
+
+**Enregistrement.** Dans `src/main.tsx`, **après** le premier rendu, au `load` puis
+en temps mort (`requestIdleCallback`) ; en production seulement (`import.meta.env.PROD`),
+et **silencieux** en cas d'échec : sans worker l'application fonctionne en ligne.
+
+**Preuve hors-ligne.** `scripts/sw.test.mjs` vérifie l'exhaustivité du précache
+(fichier par fichier, sur un `dist/` factice et sur le `dist/` réel quand il
+existe), la stabilité de la version de cache, les échecs bruyants, et que le
+`sw.js` produit est du JavaScript valide (`node --check`). Le test de coupure
+réseau se fait à la main : `npm run build && npm run preview`, charger la page
+une fois, passer l'onglet hors ligne (DevTools → Network → Offline), recharger.
 
 ### 13.4 CI
 
