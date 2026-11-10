@@ -6,12 +6,12 @@ import { useLocalizedText, useT } from '@/i18n';
 import type { MessageKey } from '@/i18n';
 import {
   CollectionScreen,
+  GrandOralScreen,
   HomeScreen,
   ProgressScreen,
   SettingsScreen,
   StatsScreen,
   TrainScreen,
-  UnderConstructionScreen,
 } from '@/ui/screens';
 import { Chip, IconButton, VisuallyHidden } from '@/ui/primitives';
 import { useActions, useAppState, useSelect } from '@/ui/store';
@@ -22,6 +22,7 @@ import styles from './AppShell.module.css';
 const NAV_ITEMS = [
   { screen: 'home', label: 'nav.home' },
   { screen: 'train', label: 'nav.train' },
+  { screen: 'grand-oral', label: 'nav.grandOral' },
   { screen: 'collection', label: 'nav.collection' },
   { screen: 'stats', label: 'nav.stats' },
   { screen: 'settings', label: 'nav.settings' },
@@ -148,15 +149,4 @@ function CurrentScreen({
     case 'grand-oral':
       return <GrandOralScreen />;
   }
-}
-
-/** Grand Oral (examen final chronométré) — livré en Phase 5. */
-function GrandOralScreen() {
-  const t = useT();
-  return (
-    <UnderConstructionScreen
-      title={t('grandOral.title')}
-      description={t('grandOral.description')}
-    />
-  );
 }

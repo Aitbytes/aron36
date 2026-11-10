@@ -404,6 +404,54 @@ export const frMessages = {
   'grandOral.title': 'Grand Oral',
   'grandOral.description':
     'Réciter les 36 questions à voix haute, dans l’ordre, en moins de 6 minutes, après sept jours sans révision. L’examen chronométré arrive à la dernière phase.',
+
+  // ── Grand Oral (P5-B) ────────────────────────────────
+  'nav.grandOral': 'Grand Oral',
+  'grandOral.heading': 'Grand Oral',
+  'grandOral.lead':
+    'L’examen final : réciter les 36 questions à voix haute, en moins de six minutes, sans aucun indice.',
+  'grandOral.instruction':
+    'Récite chaque question à voix haute, puis note-toi. Objectif : 36 questions en moins de 6 minutes.',
+  'grandOral.timerLabel': 'Temps écoulé',
+  'grandOral.noHints': 'Aucun indice : c’est l’examen.',
+  'grandOral.gradeShortcut': '1 à 4 pour te noter.',
+  'grandOral.start': 'Commencer l’examen',
+  'grandOral.gateTitle': 'Examen encore verrouillé',
+  'grandOral.gateLead':
+    'Le Grand Oral s’ouvre quand les trois actes sont entièrement maîtrisés (12 questions sur 12). Voici ce qu’il te reste :',
+  'grandOral.gateAct': 'Acte {act}',
+  'grandOral.gateRemaining': '{count} question restante',
+  'grandOral.gateRemaining_one': '{count} question restante',
+  'grandOral.gateRemaining_other': '{count} questions restantes',
+  'grandOral.gateWhy':
+    'Chaque acte se valide par des productions de qualité dans plusieurs directions ; un acte incomplet laisse des questions non maîtrisées (L14).',
+  'grandOral.gateCta': 'Voir la progression',
+  'grandOral.gateReady':
+    'Les trois actes sont maîtrisés. Récite les 36 questions à voix haute, sans aide, en moins de six minutes.',
+  'grandOral.abandon': 'Abandonner',
+  'grandOral.abandonTitle': 'Quitter l’examen ?',
+  'grandOral.abandonBody': 'Aucune progression n’est perdue et l’examen ne sera pas comptabilisé.',
+  'grandOral.abandonConfirm': 'Oui, abandonner',
+  'grandOral.abandonCancel': 'Continuer l’examen',
+  'grandOral.close': 'Fermer',
+  'grandOral.resultTitle': 'Bilan du Grand Oral',
+  'grandOral.resultBadge': 'Objectif atteint',
+  'grandOral.resultPassed': 'Réussi : six minutes tenues et précision au rendez-vous. Bravo !',
+  'grandOral.resultFailed':
+    'Examen non validé cette fois. Voici précisément ce qui a manqué — rien d’insurmontable.',
+  'grandOral.metric.duration': 'Durée',
+  'grandOral.metric.accuracy': 'Précision',
+  'grandOral.metric.accuracyValue': '{percent} %',
+  'grandOral.metric.items': 'Questions récitées',
+  'grandOral.metric.itemsValue': '{count} / {total}',
+  'grandOral.cause.duration': 'Durée : {actual} au lieu de {limit}.',
+  'grandOral.cause.accuracy': 'Précision : {actual} % au lieu de {limit} %.',
+  'grandOral.tier.diamond': 'Palier Diamant',
+  'grandOral.tier.gold': 'Palier Or',
+  'grandOral.tier.silver': 'Palier Argent',
+  'grandOral.tier.bronze': 'Palier Bronze',
+  'grandOral.replay': 'Refaire',
+  'grandOral.home': 'Retour à l’accueil',
 } as const;
 
 /** Clé de message valide : toute clé absente du catalogue français casse `tsc`. */

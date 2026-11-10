@@ -1,4 +1,5 @@
 export { CollectionScreen } from './CollectionScreen';
+export { GrandOralScreen } from './GrandOralScreen';
 export { HomeScreen } from './HomeScreen';
 export { LoadingScreen } from './LoadingScreen';
 export { deriveNodeState, type DeriveNodeStateInput, type NodeState } from './nodeState';

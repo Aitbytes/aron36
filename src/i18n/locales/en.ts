@@ -388,4 +388,52 @@ export const enMessages: Record<MessageKey, string> = {
   'grandOral.title': 'The Grand Oral',
   'grandOral.description':
     'Recite all 36 questions aloud, in order, in under 6 minutes, after seven days without review. The timed exam arrives in the final phase.',
+
+  // ── Grand Oral (P5-B) ────────────────────────────────
+  'nav.grandOral': 'Grand Oral',
+  'grandOral.heading': 'The Grand Oral',
+  'grandOral.lead':
+    'The final exam: recite all 36 questions aloud, in under six minutes, with no hints at all.',
+  'grandOral.instruction':
+    'Recite each question aloud, then grade yourself. Goal: 36 questions in under 6 minutes.',
+  'grandOral.timerLabel': 'Elapsed time',
+  'grandOral.noHints': 'No hints: this is the exam.',
+  'grandOral.gradeShortcut': '1 to 4 to grade yourself.',
+  'grandOral.start': 'Start the exam',
+  'grandOral.gateTitle': 'Exam still locked',
+  'grandOral.gateLead':
+    'The Grand Oral opens once all three acts are fully mastered (12 questions out of 12). Here is what is left:',
+  'grandOral.gateAct': 'Act {act}',
+  'grandOral.gateRemaining': '{count} question left',
+  'grandOral.gateRemaining_one': '{count} question left',
+  'grandOral.gateRemaining_other': '{count} questions left',
+  'grandOral.gateWhy':
+    'Each act is validated by quality productions in several directions; an incomplete act leaves questions unmastered (L14).',
+  'grandOral.gateCta': 'View progress',
+  'grandOral.gateReady':
+    'All three acts are mastered. Recite the 36 questions aloud, unaided, in under six minutes.',
+  'grandOral.abandon': 'Give up',
+  'grandOral.abandonTitle': 'Leave the exam?',
+  'grandOral.abandonBody': 'No progress is lost and the exam will not be recorded.',
+  'grandOral.abandonConfirm': 'Yes, give up',
+  'grandOral.abandonCancel': 'Keep going',
+  'grandOral.close': 'Close',
+  'grandOral.resultTitle': 'Grand Oral result',
+  'grandOral.resultBadge': 'Goal reached',
+  'grandOral.resultPassed': 'Passed: six minutes held and accuracy on target. Well done!',
+  'grandOral.resultFailed':
+    'Not validated this time. Here is exactly what was missing — nothing insurmountable.',
+  'grandOral.metric.duration': 'Duration',
+  'grandOral.metric.accuracy': 'Accuracy',
+  'grandOral.metric.accuracyValue': '{percent}%',
+  'grandOral.metric.items': 'Questions recited',
+  'grandOral.metric.itemsValue': '{count} / {total}',
+  'grandOral.cause.duration': 'Duration: {actual} instead of {limit}.',
+  'grandOral.cause.accuracy': 'Accuracy: {actual}% instead of {limit}%.',
+  'grandOral.tier.diamond': 'Diamond tier',
+  'grandOral.tier.gold': 'Gold tier',
+  'grandOral.tier.silver': 'Silver tier',
+  'grandOral.tier.bronze': 'Bronze tier',
+  'grandOral.replay': 'Retry',
+  'grandOral.home': 'Back home',
 };
