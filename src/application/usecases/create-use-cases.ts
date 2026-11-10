@@ -50,6 +50,7 @@ import type {
   FinishSessionOutput,
   ImportProgressInput,
   ImportProgressOutput,
+  ResetProgressOutput,
   SaveHookInput,
   SaveHookOutput,
   StartSessionInput,
@@ -407,6 +408,9 @@ export function createUseCases(
       newlyUnlockedBadges,
       updatedProgress: savedProgress,
       summary: completed ? buildSessionSummary(nextSession, now, run.productionXp) : null,
+      // (k) Échec d'écriture non fatal : reporté pour l'avertissement UI
+      // (§ 5.4), jamais lancé — l'état mémoire reste la référence.
+      writeFailure: repository.lastWriteFailure(),
     };
   }
 
@@ -454,7 +458,12 @@ export function createUseCases(
       sessionLogs: [...progress.sessionLogs, sessionLog].slice(-MAX_SESSION_LOG_ENTRIES),
     });
     runs.delete(input.sessionId);
-    return { summary, xp, updatedProgress: savedProgress };
+    return {
+      summary,
+      xp,
+      updatedProgress: savedProgress,
+      writeFailure: repository.lastWriteFailure(),
+    };
   }
 
   /* ── 4. saveHook ──────────────────────────────────────────────────────── */
@@ -475,7 +484,11 @@ export function createUseCases(
       );
     }
     const savedProgress = repository.save({ ...progress, hooks: result.library });
-    return { hook: result.hook, updatedProgress: savedProgress };
+    return {
+      hook: result.hook,
+      updatedProgress: savedProgress,
+      writeFailure: repository.lastWriteFailure(),
+    };
   }
 
   /* ── 5. importProgress ────────────────────────────────────────────────── */
@@ -513,7 +526,7 @@ export function createUseCases(
 
   /* ── 7. resetProgress ─────────────────────────────────────────────────── */
 
-  function resetProgress(): { progress: PersistedProgress } {
+  function resetProgress(): ResetProgressOutput {
     const loaded = repository.ensureLoaded();
     if (loaded.status === 'blocked' && loaded.error.code === 'future-version') {
       // Table de décision gelée : `future-version` n'autorise **aucune**
@@ -529,7 +542,7 @@ export function createUseCases(
     const locale =
       loaded.status === 'ready' ? loaded.progress.player.settings.locale : ('fr' as const);
     const savedProgress = repository.save(createInitialProgress(services, locale));
-    return { progress: savedProgress };
+    return { progress: savedProgress, writeFailure: repository.lastWriteFailure() };
   }
 
   /* ── 8. evaluateMastery ───────────────────────────────────────────────── */

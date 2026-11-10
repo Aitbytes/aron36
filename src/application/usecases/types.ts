@@ -12,7 +12,11 @@ import type {
 import type { BadgeId, XpAward } from '@/domain/gamification/types';
 import type { PersonalHook, PersonalHookKind } from '@/domain/memory/types';
 import type { MasteryCriteria, MasterySnapshot } from '@/domain/mastery/types';
-import type { PersistedProgress, ProgressImportResult } from '@/domain/progress/types';
+import type {
+  PersistedProgress,
+  ProgressError,
+  ProgressImportResult,
+} from '@/domain/progress/types';
 import type { QuestionCatalog } from '@/domain/questions/types';
 import type {
   AnswerChannel,
@@ -100,6 +104,14 @@ export interface SubmitAnswerOutput {
   readonly updatedProgress: PersistedProgress;
   /** Non `null` si la réponse terminait la session. */
   readonly summary: SessionSummary | null;
+  /**
+   * Échec de la sauvegarde de cette réponse, ou `null` en cas de succès
+   * (ARCHITECTURE § 5.4). Jamais lancé : en cas d'échec (quota, mode privé),
+   * le résultat est renvoyé normalement et l'état en mémoire du dépôt reste
+   * la référence — l'UI affiche un avertissement non bloquant et propose
+   * l'export.
+   */
+  readonly writeFailure: ProgressError | null;
 }
 
 /**
@@ -122,6 +134,8 @@ export interface FinishSessionOutput {
   readonly summary: SessionSummary;
   readonly xp: XpAward;
   readonly updatedProgress: PersistedProgress;
+  /** Échec de la sauvegarde de clôture, ou `null` (jamais lancé — § 5.4). */
+  readonly writeFailure: ProgressError | null;
 }
 
 /** Entrée d'enregistrement d'une accroche personnelle (L10, L11). */
@@ -135,6 +149,8 @@ export interface SaveHookInput {
 export interface SaveHookOutput {
   readonly hook: PersonalHook;
   readonly updatedProgress: PersistedProgress;
+  /** Échec de la sauvegarde de l'accroche, ou `null` (jamais lancé — § 5.4). */
+  readonly writeFailure: ProgressError | null;
 }
 
 /** Entrée d'import de progression. */
@@ -154,6 +170,8 @@ export interface ExportProgressOutput {
 /** Sortie de réinitialisation (double confirmation côté UI). */
 export interface ResetProgressOutput {
   readonly progress: PersistedProgress;
+  /** Échec de l'écriture du profil neuf, ou `null` (jamais lancé — § 5.4). */
+  readonly writeFailure: ProgressError | null;
 }
 
 /** Évaluation de maîtrise exposée à l'UI. */
