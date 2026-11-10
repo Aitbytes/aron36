@@ -190,7 +190,7 @@ describe('hydrate — amorçage sans jamais détruire', () => {
     expect(harness.storage.keys().value).toEqual([STORAGE_KEY]);
   });
 
-  it('signale une donnée illisible et n\u2019écrit rien', () => {
+  it('signale une donnée illisible, sauvegarde le brut et laisse la clé principale intacte', () => {
     const harness = createHarness();
     harness.storage.seedRaw(STORAGE_KEY, '{pas-du-json');
 
@@ -198,8 +198,17 @@ describe('hydrate — amorçage sans jamais détruire', () => {
 
     expect(result.status).toBe('corrupt');
     expect(result.state.lastError?.code).toBe('invalid-json');
+    // Le chemin branché sauvegarde désormais la donnée brute **avant** toute
+    // récupération (majeur A4) : une clé de backup non nulle est renvoyée et
+    // contient le brut exact.
+    expect(result.backupKey).not.toBeNull();
+    expect(harness.storage.read(result.backupKey ?? '').value).toBe('{pas-du-json');
+    const backups = harness.storage
+      .keys()
+      .value.filter((key) => key.startsWith('aron36.progress.corrupt.'));
+    expect(backups).toHaveLength(1);
+    // La clé principale n'a jamais été écrasée.
     expect(harness.storage.read(STORAGE_KEY).value).toBe('{pas-du-json');
-    expect(harness.storage.keys().value).toEqual([STORAGE_KEY]);
   });
 });
 

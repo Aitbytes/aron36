@@ -120,6 +120,12 @@ export function createInitialProgress(
 export interface HydrateResult {
   readonly state: AppState;
   readonly status: ProgressLoadResult['status'];
+  /**
+   * Clé de sauvegarde brute créée si la donnée lue était corrompue, sinon
+   * `null`. L'écran de récupération (§ 5.2) peut proposer de télécharger ce
+   * contenu avant toute réinitialisation.
+   */
+  readonly backupKey: string | null;
 }
 
 /**
@@ -140,22 +146,24 @@ export function hydrate(
 ): HydrateResult {
   const codec = createCodec();
   const read = readPersistedProgress(services, codec);
+  const backupKey = read.result.status === 'corrupt' ? read.result.backupKey : null;
   switch (read.result.status) {
     case 'loaded':
-      return { state: createInitialAppState(read.result.progress), status: 'loaded' };
+      return { state: createInitialAppState(read.result.progress), status: 'loaded', backupKey };
     case 'empty': {
       const fresh = createInitialProgress(services, locale);
       const writeError = writeProgress(services, codec, fresh);
       return {
         state: writeError === null ? createInitialAppState(fresh) : withError(fresh, writeError),
         status: 'empty',
+        backupKey,
       };
     }
     case 'future-version':
     case 'corrupt': {
       // Lecture seule : la donnée reste intacte dans le stockage.
       const fresh = createInitialProgress(services, locale);
-      return { state: withError(fresh, read.result.error), status: read.result.status };
+      return { state: withError(fresh, read.result.error), status: read.result.status, backupKey };
     }
   }
 }
