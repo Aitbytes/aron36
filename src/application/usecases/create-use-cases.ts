@@ -222,6 +222,13 @@ export function createUseCases(
     const dayKey = services.clock.dayKey(now);
     const isPretest = answer.isPretest;
     const isDiscrimination = answer.exerciseKind === 'discrimination';
+    // L12 : règle documentée (revue Phase 3) — la confiance **déclarée** est
+    // journalisée **dès qu'elle est fournie**, quel que soit le mode. Le moteur
+    // ne la recopie dans `SessionAnswer` que quand le plan l'exige
+    // (`requiresConfidence`) ; hors de ce cas, `answer.confidence` vaut `null`
+    // alors que `setConfidence` a bien déposé la valeur. On ne l'ignore plus
+    // silencieusement : le journal et la quête de calibration s'en nourrissent.
+    const declaredConfidence = answer.confidence ?? input.confidence;
 
     // (b) Ordonnancement : hors QCM et hors prétest (L18) — ces deux formes ne
     // prouvent aucune restitution et ne déplacent pas la carte SRS.
@@ -280,7 +287,7 @@ export function createUseCases(
           elapsedDays: scheduledReview?.elapsedDays ?? 0,
           responseTimeMs: answer.responseTimeMs,
           hintsUsed: answer.hintsUsed,
-          confidence: answer.confidence,
+          confidence: declaredConfidence,
         };
     const reviewLogs =
       reviewLog === null
@@ -308,7 +315,7 @@ export function createUseCases(
             direction: answer.direction,
             exerciseKind: answer.exerciseKind,
             grade: answer.grade,
-            confidence: answer.confidence,
+            confidence: declaredConfidence,
             responseTimeMs: answer.responseTimeMs,
             hintsUsed: answer.hintsUsed,
             wasNewCard: card.reps === 0,

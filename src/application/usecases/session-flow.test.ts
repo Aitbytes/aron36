@@ -247,6 +247,48 @@ describe('parcours complet — démarrer, répondre, clôturer', () => {
     }
   });
 
+  it('journalise la confiance fournie en mode learning (L12, majeur A5)', () => {
+    const harness = createHarness();
+    seedFreshProgress(harness);
+    // `learning` n'exige pas de confiance : le moteur ne la recopiera pas dans
+    // `SessionAnswer`. Le cas d'usage ne doit pourtant pas l'ignorer.
+    const started = harness.useCases.startSession.execute({ mode: 'learning', maxItems: 1 });
+    expect(started.plan.config.requiresConfidence).toBe(false);
+    const item = started.plan.items[0];
+    if (item === undefined) {
+      throw new Error('item manquant');
+    }
+
+    const output = harness.useCases.submitAnswer.execute({
+      sessionId: started.plan.id,
+      itemId: item.id,
+      grade: 'good',
+      confidence: 5,
+      responseTimeMs: 1_000,
+      hintsUsed: 0,
+      channel: 'written',
+    });
+
+    // Le moteur ne recopie pas la confiance hors `requiresConfidence`…
+    expect(output.answer.confidence).toBeNull();
+    // … mais le journal de révision porte bien la confiance **déclarée** :
+    // le badge et la quête de calibration s'en nourrissent (L12).
+    expect(output.updatedProgress.reviewLogs.at(-1)?.confidence).toBe(5);
+    // Sans confiance fournie, rien n'est inventé.
+    const started2 = harness.useCases.startSession.execute({ mode: 'learning', maxItems: 1 });
+    const item2 = started2.plan.items[0];
+    const without = harness.useCases.submitAnswer.execute({
+      sessionId: started2.plan.id,
+      itemId: item2?.id ?? '',
+      grade: 'good',
+      confidence: null,
+      responseTimeMs: 1_000,
+      hintsUsed: 0,
+      channel: 'written',
+    });
+    expect(without.updatedProgress.reviewLogs.at(-1)?.confidence).toBeNull();
+  });
+
   it('clôture avec confiance déclarée avant révélation (mode révision)', () => {
     const harness = createHarness();
     seedFreshProgress(harness);
