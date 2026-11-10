@@ -368,6 +368,7 @@ export function TrainScreen() {
           session={session}
           item={item}
           requiresConfidence={requiresConfidence}
+          speechEnabled={state.progress.player.settings.speechEnabled}
           onSubmit={submitGrade}
           onRevealAnswer={revealAnswer}
           onRevealHint={revealHint}
@@ -400,6 +401,8 @@ interface ItemStageProps {
   readonly session: SessionState;
   readonly item: SessionItem;
   readonly requiresConfidence: boolean;
+  /** Réglage `speechEnabled` : la question est lue à la révélation si vrai. */
+  readonly speechEnabled: boolean;
   readonly onSubmit: SubmitGrade;
   readonly onRevealAnswer: () => void;
   readonly onRevealHint: () => void;
@@ -415,15 +418,18 @@ function ItemStage({
   session,
   item,
   requiresConfidence,
+  speechEnabled,
   onSubmit,
   onRevealAnswer,
   onRevealHint,
 }: ItemStageProps) {
   const t = useT();
   const localize = useLocalizedText();
+  const actions = useActions();
   const clock = useClock();
   const numberHintId = useId();
   const shownAtRef = useRef<number>(clock.now());
+  const spokenRef = useRef(false);
 
   const [confidence, setConfidence] = useState<ConfidenceRating | null>(null);
   const [answerText, setAnswerText] = useState('');
@@ -443,6 +449,22 @@ function ItemStage({
     },
     [clock, confidence, onSubmit, session.revealedHints],
   );
+
+  // L8 : la question attendue est lue **à la révélation** — jamais avant, sinon
+  // la voix donnerait la réponse. Une seule lecture par item, et aucun son
+  // pour un prétest (L18) ni pour un QCM (aucune production à lire).
+  useEffect(() => {
+    if (!revealed || item.isPretest || item.exerciseKind !== 'production') {
+      return;
+    }
+    if (spokenRef.current) {
+      return;
+    }
+    spokenRef.current = true;
+    if (speechEnabled) {
+      actions.speak(expectedAnswerText(item.expectedAnswer, t, localize));
+    }
+  }, [actions, item, localize, revealed, speechEnabled, t]);
 
   const handleReveal = useCallback(() => {
     if (requiresConfidence) {

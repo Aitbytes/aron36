@@ -1,5 +1,16 @@
 @import './tokens.css';
 
+/*
+ * Préférence de mouvement explicite du joueur : `AppShell` pose
+ * `data-reduced-motion` sur `<html>`. La neutralisation s'ajoute à la requête
+ * média `prefers-reduced-motion` de `tokens.css` — l'une ou l'autre suffit.
+ */
+:root[data-reduced-motion='reduce'] {
+  --motion-fast: 0ms;
+  --motion-normal: 0ms;
+  --easing-standard: linear;
+}
+
 *,
 *::before,
 *::after {

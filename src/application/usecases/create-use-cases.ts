@@ -60,6 +60,8 @@ import type {
   RevealHintOutput,
   SaveHookInput,
   SaveHookOutput,
+  SpeakInput,
+  SpeakOutput,
   StartSessionInput,
   StartSessionOutput,
   SubmitAnswerInput,
@@ -152,6 +154,13 @@ export function createUseCases(
       ...(input.questionIds === undefined ? {} : { questionIds: input.questionIds }),
       ...(input.maxItems === undefined ? {} : { maxItems: input.maxItems }),
       ...(input.maxDurationMs === undefined ? {} : { maxDurationMs: input.maxDurationMs }),
+      // L12 : le réglage du joueur décide si le jugement de confiance est exigé.
+      // Coché (défaut), les défauts du mode s'appliquent (`review` et
+      // `grand-oral` le demandent déjà) ; décoché, il est retiré partout.
+      // Le mode `learning` reste sans contrainte : contrat vérifié par
+      // `session-flow.test.ts` (« journalise la confiance fournie en mode
+      // learning »). Le test `confidence-settings.test.ts` prouve l'effet.
+      ...(progress.player.settings.confidencePromptEnabled ? {} : { requiresConfidence: false }),
     };
     const built = sessionBuilder.build(request, {
       catalog: services.catalog,
@@ -727,6 +736,20 @@ export function createUseCases(
     return questGenerator.progress(board, QUEST_DEFINITIONS, input);
   }
 
+  /* ── 10. speak (L8) : synthèse vocale, no-op si coupée ou port neutre ── */
+
+  async function speak(input: SpeakInput): Promise<SpeakOutput> {
+    const loaded = repository.ensureLoaded();
+    // Progression indisponible ou voix coupée : aucun son, jamais d'exception.
+    if (loaded.status === 'blocked' || !loaded.progress.player.settings.speechEnabled) {
+      return { ok: false, reason: 'unsupported', message: null };
+    }
+    return services.speech.speak({
+      text: input.text,
+      locale: loaded.progress.player.settings.locale,
+    });
+  }
+
   return {
     startSession: { execute: startSession },
     submitAnswer: { execute: submitAnswer },
@@ -740,6 +763,7 @@ export function createUseCases(
     resetProgress: { execute: resetProgress },
     updateSettings: { execute: updateSettings },
     evaluateMastery: { execute: evaluateMastery },
+    speak: { execute: speak },
   };
 }
 

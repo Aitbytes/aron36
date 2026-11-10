@@ -29,7 +29,7 @@ import type { ScheduledReview, Scheduler, SchedulerConfig } from '@/domain/srs/t
 import type { ClockPort } from '@/application/ports/ClockPort';
 import type { IdPort } from '@/application/ports/IdPort';
 import type { RandomPort } from '@/application/ports/RandomPort';
-import type { SpeechPort } from '@/application/ports/SpeechPort';
+import type { SpeechPort, SpeechResult } from '@/application/ports/SpeechPort';
 import type { StoragePort } from '@/application/ports/StoragePort';
 
 /**
@@ -241,6 +241,19 @@ export interface EvaluateMasteryOutput {
   readonly mastery: MasterySnapshot;
 }
 
+/**
+ * Entrée de synthèse vocale (L8).
+ *
+ * Le texte est **déjà localisé** par l'appelant : le cas d'usage ne connaît que
+ * le réglage (`speechEnabled`) et la locale courante, pas les catalogues.
+ */
+export interface SpeakInput {
+  readonly text: string;
+}
+
+/** Sortie de synthèse vocale : résultat typé du port, jamais une exception. */
+export type SpeakOutput = SpeechResult;
+
 /** Contrat d'un cas d'usage synchrone. */
 export interface UseCase<Input, Output> {
   execute(input: Input): Output;
@@ -260,4 +273,9 @@ export interface UseCases {
   readonly resetProgress: UseCase<void, ResetProgressOutput>;
   readonly updateSettings: UseCase<UpdateSettingsInput, UpdateSettingsOutput>;
   readonly evaluateMastery: UseCase<void, EvaluateMasteryOutput>;
+  /**
+   * Synthèse vocale (L8) : no-op si le réglage est désactivé ou si le port est
+   * neutre (`NullSpeechPort` renvoie `unsupported` sans produire de son).
+   */
+  readonly speak: UseCase<SpeakInput, Promise<SpeakOutput>>;
 }

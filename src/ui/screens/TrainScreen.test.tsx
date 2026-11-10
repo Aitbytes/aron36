@@ -1,6 +1,6 @@
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import { makeDueCard, makeProgress } from '@/application/store/test-fixtures';
 import { UseCaseRejection } from '@/application/usecases';
@@ -191,6 +191,45 @@ describe('TrainScreen — confiance (L12)', () => {
 
     const logs = harness.store.getState().progress.reviewLogs;
     expect(logs.at(-1)?.confidence).toBe(3);
+  });
+});
+
+describe('TrainScreen — synthèse vocale (L8)', () => {
+  it('lit la question attendue à la révélation, jamais avant', async () => {
+    const user = userEvent.setup();
+    const harness = createUiHarness();
+    startSession(harness, { mode: 'learning', questionIds: [7], maxItems: 1 });
+    const item = firstItem(harness);
+    const expected =
+      item.expectedAnswer.kind === 'question'
+        ? item.expectedAnswer.text.fr
+        : `Question ${String(item.expectedAnswer.questionNumber)}`;
+    const speak = vi.fn((_input: { readonly text: string }) =>
+      Promise.resolve({ ok: true } as const),
+    );
+    const useCases: UseCases = { ...harness.useCases, speak: { execute: speak } };
+    renderTrain(harness, useCases);
+
+    expect(speak).not.toHaveBeenCalled();
+    await user.click(screen.getByRole('button', { name: 'Voir la réponse' }));
+
+    expect(speak).toHaveBeenCalledTimes(1);
+    expect(speak.mock.calls[0]?.[0]).toEqual({ text: expected });
+  });
+
+  it('ne lit rien pour un prétest, jamais corrigé (L18)', async () => {
+    const user = userEvent.setup();
+    const harness = createUiHarness({ progress: makeProgress() });
+    startSession(harness, { mode: 'discovery', questionIds: [7], maxItems: 1 });
+    const speak = vi.fn((_input: { readonly text: string }) =>
+      Promise.resolve({ ok: true } as const),
+    );
+    const useCases: UseCases = { ...harness.useCases, speak: { execute: speak } };
+    renderTrain(harness, useCases);
+
+    await user.click(screen.getByRole('button', { name: 'Valider ma devinette' }));
+
+    expect(speak).not.toHaveBeenCalled();
   });
 });
 

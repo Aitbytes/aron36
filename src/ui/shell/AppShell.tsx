@@ -1,3 +1,5 @@
+import { useEffect } from 'react';
+
 import { selectLevel, selectStreak } from '@/application/store';
 import type { AppScreen } from '@/application/store';
 import { useLocalizedText, useT } from '@/i18n';
@@ -42,6 +44,14 @@ export function AppShell() {
   const actions = useActions();
   const level = useSelect(selectLevel);
   const streak = useSelect(selectStreak);
+  const reducedMotion = state.progress.player.settings.reducedMotion;
+
+  // Préférence de mouvement (L8/a11y) : reflétée sur `<html>` au démarrage et à
+  // chaque changement, pour que `global.css` neutralise les transitions même
+  // quand le système ne demande rien. La requête média reste prioritaire.
+  useEffect(() => {
+    document.documentElement.setAttribute('data-reduced-motion', reducedMotion);
+  }, [reducedMotion]);
 
   return (
     <div className={styles.shell}>

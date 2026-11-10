@@ -1,6 +1,8 @@
 import { fireEvent, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
+
+import type { UseCases } from '@/application/usecases';
 
 import { progressCodec } from '@/application/progress';
 import { buildFullProgress, REFERENCE_TIME } from '@/application/progress/testState';
@@ -94,6 +96,22 @@ describe('écran d’accueil', () => {
 
     expect(screen.getByRole('heading', { level: 1, name: 'Entraînement' })).toBeInTheDocument();
     expect(harness.store.getState().session?.plan.mode).toBe('review');
+  });
+
+  it('transmet l’objectif quotidien comme durée cible de la session (L3)', async () => {
+    const user = userEvent.setup();
+    const harness = createUiHarness({ progress: progressWithDueActOne() });
+    const execute = vi.fn((input: Parameters<UseCases['startSession']['execute']>[0]) =>
+      harness.useCases.startSession.execute(input),
+    );
+    const useCases: UseCases = { ...harness.useCases, startSession: { execute } };
+    renderApp(harness, useCases);
+
+    await user.click(screen.getByRole('button', { name: 'Commencer la session' }));
+
+    expect(execute).toHaveBeenCalledWith(
+      expect.objectContaining({ mode: 'review', maxDurationMs: 15 * 60_000 }),
+    );
   });
 
   it('importe une sauvegarde et remplace la progression en place', async () => {

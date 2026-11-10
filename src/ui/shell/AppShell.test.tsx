@@ -2,6 +2,7 @@ import { screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it } from 'vitest';
 
+import globalCss from '@/styles/global.css?raw';
 import { createUiHarness, renderApp } from '@/test/uiHarness';
 
 describe('AppShell — coque et navigation', () => {
@@ -29,6 +30,28 @@ describe('AppShell — coque et navigation', () => {
     expect(screen.getByRole('heading', { level: 1, name: 'Collection' })).toBeInTheDocument();
     expect(target).toHaveAttribute('aria-current', 'page');
     expect(screen.getByRole('button', { name: 'Accueil' })).not.toHaveAttribute('aria-current');
+  });
+
+  it('reflète la préférence de mouvement du joueur sur `<html>`', () => {
+    renderApp(createUiHarness());
+
+    expect(document.documentElement).toHaveAttribute('data-reduced-motion', 'system');
+  });
+
+  it('suit le changement de préférence de mouvement (réduire les animations)', async () => {
+    const user = userEvent.setup();
+    renderApp(createUiHarness());
+
+    await user.click(screen.getByRole('button', { name: 'Réglages' }));
+    await user.click(screen.getByRole('radio', { name: 'Réduire les animations' }));
+
+    expect(document.documentElement).toHaveAttribute('data-reduced-motion', 'reduce');
+  });
+
+  it('la feuille globale neutralise les transitions sous data-reduced-motion', () => {
+    expect(globalCss).toContain(":root[data-reduced-motion='reduce']");
+    expect(globalCss).toContain('--motion-fast: 0ms');
+    expect(globalCss).toContain('--motion-normal: 0ms');
   });
 
   it('expose un lien d’évitement vers le contenu principal', () => {

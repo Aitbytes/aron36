@@ -397,6 +397,30 @@ describe('builder — prétest L18', () => {
   });
 });
 
+describe('builder — jugement de confiance réglable (L12)', () => {
+  it('un `requiresConfidence` explicite prime sur le défaut du mode', () => {
+    const forcedOn = buildOk(
+      makeRequest({ mode: 'learning', requiresConfidence: true }),
+      dueCardsContext(),
+    );
+    expect(forcedOn.config.requiresConfidence).toBe(true);
+
+    const forcedOff = buildOk(
+      makeRequest({ mode: 'review', requiresConfidence: false }),
+      dueCardsContext(),
+    );
+    expect(forcedOff.config.requiresConfidence).toBe(false);
+  });
+
+  it('sans demande explicite, le défaut du mode s’applique', () => {
+    const review = buildOk(makeRequest({ mode: 'review' }), dueCardsContext());
+    expect(review.config.requiresConfidence).toBe(true);
+
+    const learning = buildOk(makeRequest({ mode: 'learning' }), dueCardsContext());
+    expect(learning.config.requiresConfidence).toBe(false);
+  });
+});
+
 describe('builder — modes examen : aucune discrimination (L1)', () => {
   const EXAM_MODES = ['recitation', 'grand-oral'] as const;
 

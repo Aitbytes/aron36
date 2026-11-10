@@ -821,7 +821,9 @@ export function buildSession(
       ? 0
       : Math.min(DEFAULT_SESSION_LIMITS.maxDiscriminationRatio, 0.2),
     productionOnly: defaults.productionOnly,
-    requiresConfidence: defaults.requiresConfidence,
+    // Réglage du joueur prioritaire (L12) : `startSession` le renseigne depuis
+    // `confidencePromptEnabled` ; absent, le défaut du mode s'applique.
+    requiresConfidence: request.requiresConfidence ?? defaults.requiresConfidence,
     speedTargetMs: defaults.speedTargetMs,
   };
 
