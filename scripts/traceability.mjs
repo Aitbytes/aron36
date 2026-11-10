@@ -142,6 +142,26 @@ function renderTable(headers, rows) {
 }
 
 /** Ligne de preuve affichée dans la dernière colonne. */
+/**
+ * Un test ne prouve un mécanisme que s'il vit dans **l'un de ses modules**.
+ *
+ * Sans ce filtre, n'importe quel test dont l'intitulé contient « direction »
+ * « prouvait » L16 depuis un écran d'interface — un faux positif qui rendait la
+ * traçabilité complaisante. Le champ `modules` de la table de correspondance
+ * était décoratif ; il devient contraignant.
+ */
+function isInModule(file, module) {
+  const normalized = file.replaceAll('\\', '/');
+  if (module === 'application') {
+    return normalized.includes('src/application/');
+  }
+  return (
+    normalized.includes(`/domain/${module}/`) ||
+    normalized.includes(`/application/${module}/`) ||
+    normalized.includes(`/infrastructure/${module}/`)
+  );
+}
+
 function renderEvidence(matches) {
   if (matches.length === 0) {
     return '—';
@@ -289,7 +309,11 @@ for (const file of collectTestFiles(SRC_DIR).sort()) {
 
 const resolved = ordered.map((mechanism) => ({
   ...mechanism,
-  matches: tests.filter((test) => mechanism.tests.some((pattern) => pattern.test(test.name))),
+  matches: tests.filter(
+    (test) =>
+      mechanism.modules.some((module) => isInModule(test.file, module)) &&
+      mechanism.tests.some((pattern) => pattern.test(test.name)),
+  ),
 }));
 
 const problems = [];

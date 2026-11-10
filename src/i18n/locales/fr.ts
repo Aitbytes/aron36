@@ -390,6 +390,11 @@ export const frMessages = {
   'settings.resetWordLabel': 'Saisissez « {word} » pour confirmer',
   'settings.resetWordHint':
     'Le bouton de confirmation reste inactif tant que le mot n’est pas exact.',
+
+  // ── Grand Oral (Phase 5) ─────────────────────────────
+  'grandOral.title': 'Grand Oral',
+  'grandOral.description':
+    'Réciter les 36 questions à voix haute, dans l’ordre, en moins de 6 minutes, après sept jours sans révision. L’examen chronométré arrive à la dernière phase.',
 } as const;
 
 /** Clé de message valide : toute clé absente du catalogue français casse `tsc`. */

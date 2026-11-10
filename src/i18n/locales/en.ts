@@ -374,4 +374,9 @@ export const enMessages: Record<MessageKey, string> = {
   'settings.resetWordLabel': 'Type “{word}” to confirm',
   'settings.resetWordHint':
     'The confirmation button stays disabled until the word matches exactly.',
+
+  // ── Grand Oral (Phase 5) ─────────────────────────────
+  'grandOral.title': 'The Grand Oral',
+  'grandOral.description':
+    'Recite all 36 questions aloud, in order, in under 6 minutes, after seven days without review. The timed exam arrives in the final phase.',
 };

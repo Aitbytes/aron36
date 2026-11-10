@@ -13,6 +13,8 @@ import { Button, Dialog, Panel, ProgressBar, cx } from '@/ui/primitives';
 import { useActions, useAppState, useClock, useMastery } from '@/ui/store';
 
 import { LoadingScreen } from './LoadingScreen';
+import { deriveNodeState } from './nodeState';
+import type { NodeState } from './nodeState';
 import styles from './ProgressScreen.module.css';
 
 /**
@@ -21,12 +23,9 @@ import styles from './ProgressScreen.module.css';
  * Aucune règle métier n'est calculée dans l'affichage : la maîtrise (donc les
  * états « maîtrisé » et « verrouillé ») vient de `useMastery` → `MasteryEvaluator`,
  * les paliers et raretés de `@/domain/gamification`. Le seul calcul local est
- * `deriveNodeState`, faute de sélecteur exposé pour l'état d'un nœud — il est pur,
- * nommé et couvert par test (voir rapport).
+ * `deriveNodeState` (`./nodeState`), faute de sélecteur exposé pour l'état d'un
+ * nœud — il est pur, nommé et couvert par test.
  */
-
-/** État visuel d'un nœud de la carte. */
-export type NodeState = 'locked' | 'available' | 'due' | 'learning' | 'mastered';
 
 /** Clé i18n du libellé accessible d'un état de nœud. */
 const NODE_STATE_LABELS: Readonly<Record<NodeState, MessageKey>> = {
@@ -45,40 +44,6 @@ const NODE_CLASSES: Readonly<Record<NodeState, string | undefined>> = {
   learning: styles.nodeLearning,
   mastered: styles.nodeMastered,
 };
-
-export interface DeriveNodeStateInput {
-  readonly actUnlocked: boolean;
-  readonly mastered: boolean;
-  readonly card: CardState | undefined;
-  /** Instant injecté par `ClockPort` (jamais `Date.now()`, ADR 0008). */
-  readonly now: EpochMs;
-}
-
-/**
- * Dérive l'état d'un nœud à partir de la maîtrise, de l'acte et de la carte.
- *
- * Ordre de priorité : verrouillé (acte) > maîtrisé > neuf (disponible) >
- * échéance atteinte (dû) > en apprentissage > disponible.
- */
-export function deriveNodeState(input: DeriveNodeStateInput): NodeState {
-  const { actUnlocked, mastered, card, now } = input;
-  if (!actUnlocked) {
-    return 'locked';
-  }
-  if (mastered) {
-    return 'mastered';
-  }
-  if (card === undefined || card.phase === 'new') {
-    return 'available';
-  }
-  if (card.dueAt <= now) {
-    return 'due';
-  }
-  if (card.phase === 'learning' || card.phase === 'relearning') {
-    return 'learning';
-  }
-  return 'available';
-}
 
 /** Libellé d'échéance relatif, formaté par le traducteur (« dû dans 3 j »). */
 function describeDue(card: CardState, now: EpochMs, t: Translator): string {
