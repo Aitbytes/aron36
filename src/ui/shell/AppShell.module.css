@@ -1,7 +1,11 @@
 .shell {
   display: grid;
   gap: var(--space-4);
-  inline-size: min(100%, 64rem);
+  /* `max-inline-size` plutôt qu'une largeur fixe : sous 64 rem, la coque suit
+   * le viewport sans jamais le dépasser (aucun défilement horizontal). */
+  inline-size: 100%;
+  max-inline-size: 64rem;
+  min-inline-size: 0;
   margin-inline: auto;
 }
 
@@ -69,11 +73,15 @@
 
 .body {
   display: grid;
+  /* La colonne peut se réduire sous la largeur de son contenu : c'est ce qui
+   * empêche la rangée de navigation de pousser la page au-delà du viewport. */
+  grid-template-columns: minmax(0, 1fr);
   grid-template-areas:
     'main'
     'nav';
   gap: var(--space-4);
   align-items: start;
+  min-inline-size: 0;
 }
 
 .main {
@@ -85,11 +93,22 @@
   grid-area: nav;
   display: grid;
   grid-auto-flow: column;
+  /* Les onglets gardent leur largeur naturelle et défilent au lieu de rétrécir
+   * au point de tronquer leur libellé. */
+  grid-auto-columns: max-content;
   gap: var(--space-1);
   padding: var(--space-1);
   background: var(--color-surface);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-pill);
+  /* Sous 60 rem, la navigation est une rangée scrollable (barre basse) :
+   * `overflow-x: auto` + `scroll-snap` évitent tout débordement de page. */
+  max-inline-size: 100%;
+  min-inline-size: 0;
+  overflow-x: auto;
+  overscroll-behavior-inline: contain;
+  scroll-snap-type: inline proximity;
+  -webkit-overflow-scrolling: touch;
 }
 
 .navItem {
@@ -103,6 +122,8 @@
   font-size: var(--text-sm);
   font-weight: 600;
   cursor: pointer;
+  white-space: nowrap;
+  scroll-snap-align: center;
 }
 
 .navItem[aria-current='page'] {
@@ -123,6 +144,9 @@
     inset-block-start: var(--space-4);
     border-radius: var(--radius-lg);
     padding: var(--space-2);
+    /* Barre latérale : plus besoin de défilement horizontal. */
+    overflow-x: visible;
+    scroll-snap-type: none;
   }
 
   .navItem {
