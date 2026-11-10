@@ -1,0 +1,6 @@
+.icon {
+  padding-inline: 0;
+  aspect-ratio: 1;
+  font-size: var(--text-lg);
+  line-height: 1;
+}
