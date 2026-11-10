@@ -178,7 +178,6 @@ export const enMessages: Record<MessageKey, string> = {
   'train.confidence.3': '3 — medium',
   'train.confidence.4': '4 — fairly sure',
   'train.confidence.5': '5 — certain',
-  'train.confidence.selected': 'Declared confidence: {level}',
   'train.reveal': 'Show the answer',
   'train.channel.title': 'How are you answering?',
   'train.channel.written': 'Written',

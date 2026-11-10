@@ -191,7 +191,6 @@ export const frMessages = {
   'train.confidence.3': '3 — moyen',
   'train.confidence.4': '4 — assez sûr·e',
   'train.confidence.5': '5 — certain·e',
-  'train.confidence.selected': 'Confiance déclarée : {level}',
   'train.reveal': 'Voir la réponse',
   'train.channel.title': 'Comment réponds-tu ?',
   'train.channel.written': 'Par écrit',

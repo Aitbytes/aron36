@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest';
 
-import { levelCalculator } from '@/domain/gamification';
+import { levelCalculator, metricsCalculator } from '@/domain/gamification';
 import { LEVEL_CURVE } from '@/domain/gamification/types';
 import { sessionEngine } from '@/domain/session';
+import type { SessionLog } from '@/domain/session/types';
+import { makeLog } from '@/domain/session/test-fixtures';
 
 import { createInitialAppState } from './initialState';
 import {
@@ -16,6 +18,7 @@ import {
 } from './test-fixtures';
 import {
   selectActiveScreen,
+  selectBestOralExam,
   selectCanReveal,
   selectDueCount,
   selectFeedback,
@@ -23,6 +26,7 @@ import {
   selectLevel,
   selectSessionProgress,
   selectStreak,
+  selectWeightedAccuracy,
 } from './selectors';
 import { reduce } from './reducer';
 
@@ -185,6 +189,77 @@ describe("sélecteurs d'affichage — projections pures", () => {
     selectIsGrandOralAvailable(state);
     selectSessionProgress(state);
     expect(JSON.stringify(state)).toBe(snapshot);
+  });
+});
+
+/* ── Projections déplacées de StatsScreen (revue Phase 4) ─────────────── */
+
+/** Entrée minimale du calculateur de métriques (aucune donnée superflue). */
+function emptyMetricsInput(): Parameters<typeof metricsCalculator.compute>[0] {
+  return {
+    reviewLogs: [],
+    sessionLogs: [],
+    mastery: [],
+    hooksCount: 0,
+    collection: { entries: [] },
+    streak: { current: 0, longest: 0, lastActiveDay: null, freezes: 0, frozenDays: [] },
+    oralExamPasses: 0,
+    bestOralExam: null,
+  };
+}
+
+/** Journal de session minimal, mode Grand Oral. */
+function oralLog(durationMs: number, accuracy: number): SessionLog {
+  return {
+    sessionId: `oral-${String(durationMs)}-${String(accuracy)}`,
+    mode: 'grand-oral',
+    planSeed: 'seed-oral',
+    startedAt: 0,
+    endedAt: durationMs,
+    durationMs,
+    window: 'evening',
+    itemCount: 36,
+    productionCount: 36,
+    discriminationCount: 0,
+    spokenCount: 36,
+    correctCount: Math.round(accuracy * 36),
+    accuracy,
+    xpAwarded: 0,
+  };
+}
+
+describe('selectWeightedAccuracy — moyenne pondérée par direction', () => {
+  it('pondère la précision par le nombre de tentatives', () => {
+    const metrics = metricsCalculator.compute({
+      ...emptyMetricsInput(),
+      reviewLogs: [
+        makeLog(1, 'order-to-question', 0),
+        makeLog(2, 'order-to-question', 0),
+        { ...makeLog(3, 'question-to-number', 0), grade: 'again' },
+      ],
+    });
+
+    // `order` : 2 tentatives à 1 ; `question-to-number` : 1 tentative à 0.
+    expect(selectWeightedAccuracy(metrics)).toBeCloseTo(2 / 3, 10);
+  });
+
+  it('retourne null sans aucune production notée', () => {
+    expect(selectWeightedAccuracy(metricsCalculator.compute(emptyMetricsInput()))).toBeNull();
+  });
+});
+
+describe('selectBestOralExam — meilleur essai (précision puis durée)', () => {
+  it('choisit la meilleure précision, puis la durée la plus courte', () => {
+    const best = selectBestOralExam([
+      oralLog(400_000, 0.9),
+      oralLog(300_000, 0.9),
+      oralLog(100_000, 0.8),
+    ]);
+    expect(best).toEqual({ durationMs: 300_000, accuracy: 0.9 });
+  });
+
+  it('retourne null sans Grand Oral', () => {
+    expect(selectBestOralExam([])).toBeNull();
   });
 });
 

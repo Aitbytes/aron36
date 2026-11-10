@@ -1,6 +1,11 @@
 import { useMemo } from 'react';
 
-import { selectLevel, selectStreak } from '@/application/store';
+import {
+  selectBestOralExam,
+  selectLevel,
+  selectStreak,
+  selectWeightedAccuracy,
+} from '@/application/store';
 import {
   BADGE_DEFINITIONS,
   conditionProgress,
@@ -9,7 +14,6 @@ import {
 } from '@/domain/gamification';
 import type { BadgeTier, DirectionMetrics, PlayerMetrics } from '@/domain/gamification/types';
 import type { MasterySnapshot } from '@/domain/mastery/types';
-import type { SessionLog } from '@/domain/session/types';
 import { DRILL_DIRECTIONS } from '@/domain/shared/types';
 import type { DrillDirection } from '@/domain/shared/types';
 import { useLocale, useLocalizedText, useT } from '@/i18n';
@@ -48,9 +52,9 @@ const BADGE_TIER_KEYS = {
  * puis afficher les valeurs produites.
  *
  * Le domaine ne peut pas déduire `bestOralExam` des journaux (durée et précision
- * d'un Grand Oral) : `create-use-cases` le projette déjà, et cette projection est
- * reproduite ici faute de sélecteur dédié en Phase 4-A. Elle ne contient aucune
- * règle de notation.
+ * d'un Grand Oral) : `selectBestOralExam` et `selectWeightedAccuracy` vivent
+ * désormais dans `@/application/store/selectors` — l'écran ne fait plus que
+ * formater les valeurs qu'ils produisent.
  */
 export function StatsScreen() {
   const t = useT();
@@ -83,7 +87,7 @@ export function StatsScreen() {
 
   const badges = buildBadgeViews(state.progress.player.badges, metrics);
   const unlockedBadges = badges.filter((badge) => badge.unlockedAt !== null).length;
-  const overallAccuracy = metrics === null ? null : weightedAccuracy(metrics);
+  const overallAccuracy = metrics === null ? null : selectWeightedAccuracy(metrics);
 
   return (
     <div className={styles.screen}>
@@ -326,7 +330,7 @@ function usePlayerMetrics(): PlayerMetrics | null {
       collection: progress.player.collection,
       streak: progress.player.streak,
       oralExamPasses: progress.sessionLogs.filter((log) => log.mode === 'grand-oral').length,
-      bestOralExam: bestOralExamOf(progress.sessionLogs),
+      bestOralExam: selectBestOralExam(progress.sessionLogs),
     });
   }, [mastery, state.progress]);
 }
@@ -334,41 +338,4 @@ function usePlayerMetrics(): PlayerMetrics | null {
 /** Liste plate des questions maîtrisées, attendue par `metricsCalculator`. */
 function flattenMastery(mastery: MasterySnapshot) {
   return mastery.acts.flatMap((act) => act.questions);
-}
-
-/**
- * Meilleur Grand Oral mesuré (précision maximale, puis durée minimale).
- *
- * Même projection que la couche application : le domaine reçoit ce résultat en
- * entrée car il ne peut pas le déduire des journaux. Aucune règle de notation.
- */
-function bestOralExamOf(logs: readonly SessionLog[]) {
-  const orals = logs
-    .filter((log) => log.mode === 'grand-oral')
-    .map((log) => ({ durationMs: log.durationMs, accuracy: log.accuracy }));
-  if (orals.length === 0) {
-    return null;
-  }
-  return orals.reduce((best, candidate) =>
-    candidate.accuracy > best.accuracy ||
-    (candidate.accuracy === best.accuracy && candidate.durationMs < best.durationMs)
-      ? candidate
-      : best,
-  );
-}
-
-/**
- * Précision globale : moyenne des précisions **déjà calculées par le domaine**
- * par direction, pondérée par leurs tentatives respectives. Aucun crédit n'est
- * recalculé ; `null` quand aucune production n'existe.
- */
-function weightedAccuracy(metrics: PlayerMetrics): number | null {
-  let attempts = 0;
-  let weighted = 0;
-  for (const direction of DRILL_DIRECTIONS) {
-    const directionMetrics = metrics.answersByDirection[direction];
-    attempts += directionMetrics.attempts;
-    weighted += directionMetrics.accuracy * directionMetrics.attempts;
-  }
-  return attempts === 0 ? null : weighted / attempts;
 }
