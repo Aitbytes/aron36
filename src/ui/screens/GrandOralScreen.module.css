@@ -1,0 +1,265 @@
+.screen {
+  display: grid;
+  gap: var(--space-4);
+}
+
+.heading {
+  font-size: var(--text-xl);
+}
+
+.chrome {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  align-items: flex-start;
+  justify-content: space-between;
+}
+
+.titleBlock {
+  display: grid;
+  gap: var(--space-2);
+  max-inline-size: 42rem;
+}
+
+.instruction {
+  color: var(--color-accent-alt);
+  font-size: var(--text-md);
+  font-weight: 600;
+  line-height: var(--leading-body);
+}
+
+/* Bandeau d'état : chronomètre à gauche, progression à droite. */
+.status {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-4);
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+}
+
+.timer {
+  display: inline-flex;
+  gap: var(--space-2);
+  align-items: baseline;
+  margin: 0;
+}
+
+.timerLabel {
+  color: var(--color-text-muted);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.timerValue {
+  font-size: var(--text-2xl);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.sessionProgress {
+  display: flex;
+  flex: 1 1 14rem;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-inline-size: 10rem;
+}
+
+.sessionProgressText {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: var(--text-sm);
+  font-variant-numeric: tabular-nums;
+}
+
+.stage {
+  display: grid;
+  gap: var(--space-4);
+}
+
+.cue {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.label {
+  color: var(--color-text-muted);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.cueOrder {
+  font-size: var(--text-2xl);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.keyword {
+  font-size: var(--text-2xl);
+  font-weight: 700;
+  color: var(--color-accent);
+}
+
+.image {
+  padding: var(--space-4);
+  border: 1px dashed var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-bg-elevated);
+  font-size: var(--text-lg);
+  font-style: italic;
+}
+
+.number {
+  font-size: var(--text-2xl);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.question {
+  font-size: var(--text-lg);
+  line-height: var(--leading-body);
+}
+
+.muted {
+  color: var(--color-text-muted);
+  font-size: var(--text-sm);
+}
+
+.stepTitle {
+  font-size: var(--text-lg);
+}
+
+.confidence,
+.revealed,
+.grades {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.grades {
+  padding-block-start: var(--space-2);
+  border-block-start: 1px solid var(--color-border);
+}
+
+.expected {
+  font-size: var(--text-lg);
+  font-weight: 600;
+  line-height: var(--leading-body);
+}
+
+.shortcut {
+  color: var(--color-text-muted);
+  font-size: var(--text-sm);
+}
+
+.reveal {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  align-items: center;
+}
+
+.error {
+  padding: var(--space-3);
+  border: 1px solid var(--color-danger);
+  border-radius: var(--radius-sm);
+  color: var(--color-danger);
+}
+
+/* ── Accès ──────────────────────────────────────────────────────────────── */
+
+.gate {
+  display: grid;
+  gap: var(--space-3);
+  max-inline-size: 42rem;
+}
+
+.actList {
+  display: grid;
+  gap: var(--space-2);
+  padding: 0;
+  margin: 0;
+  list-style: none;
+}
+
+.actRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  align-items: baseline;
+  justify-content: space-between;
+  padding: var(--space-2) var(--space-3);
+  border-inline-start: 3px solid var(--color-accent-alt);
+  background: var(--color-bg-elevated);
+}
+
+.actName {
+  font-weight: 600;
+}
+
+.actRemaining {
+  color: var(--color-text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── Bilan ──────────────────────────────────────────────────────────────── */
+
+.result {
+  display: grid;
+  gap: var(--space-4);
+  max-inline-size: 42rem;
+}
+
+.correct {
+  color: var(--color-success);
+  font-weight: 700;
+}
+
+.failed {
+  color: var(--color-text);
+  font-weight: 600;
+  line-height: var(--leading-body);
+}
+
+.metrics {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-4);
+  margin: 0;
+}
+
+.metric {
+  display: grid;
+  gap: var(--space-1);
+  min-inline-size: 7rem;
+}
+
+.metricLabel {
+  color: var(--color-text-muted);
+  font-size: var(--text-sm);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.metricValue {
+  margin: 0;
+  font-size: var(--text-xl);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.cause {
+  margin: 0;
+  padding: var(--space-3);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--color-bg-elevated);
+  line-height: var(--leading-body);
+}

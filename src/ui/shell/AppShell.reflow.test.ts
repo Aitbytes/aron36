@@ -86,12 +86,14 @@ describe('reflow de la coque — aucune largeur au-delà du viewport (≤ 414 px
     expect(media).toContain('grid-template-columns: 15rem minmax(0, 1fr)');
   });
 
-  it('monte la coque et confirme les cinq onglets dans une seule navigation', () => {
+  it('monte la coque et confirme les six onglets dans une seule navigation', () => {
     renderApp(createUiHarness());
 
     const nav = screen.getByRole('navigation', { name: 'Navigation principale' });
     expect(nav).toBeInTheDocument();
-    expect(nav.querySelectorAll('button')).toHaveLength(5);
+    // Six onglets depuis l'ajout du Grand Oral (P5-B) ; la rangée mobile les fait
+    // défiler, donc la sixième entrée ne casse pas le reflow.
+    expect(nav.querySelectorAll('button')).toHaveLength(6);
     expect(nav.className).not.toBe('');
   });
 });
