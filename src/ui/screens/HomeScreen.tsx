@@ -47,14 +47,18 @@ export function HomeScreen() {
   const mastery = useMastery();
 
   const handleStart = useCallback(() => {
-    const result = actions.startSession({ mode: dueCount > 0 ? 'review' : 'learning' });
+    const result = actions.startSession({
+      mode: dueCount > 0 ? 'review' : 'learning',
+      // Objectif quotidien (L3) : la durée cible de la session vient du réglage.
+      maxDurationMs: state.progress.player.settings.dailyGoalMinutes * 60_000,
+    });
     if (result.ok) {
       setStartFailure(null);
       actions.navigate('train');
       return;
     }
     setStartFailure(result.reason);
-  }, [actions, dueCount]);
+  }, [actions, dueCount, state.progress.player.settings.dailyGoalMinutes]);
 
   if (!state.ready) {
     return <LoadingScreen />;

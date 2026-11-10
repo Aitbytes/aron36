@@ -26,6 +26,7 @@ function useCasesDouble(overrides: Partial<UseCases>): UseCases {
     resetProgress: { execute: notImplemented },
     updateSettings: { execute: notImplemented },
     evaluateMastery: { execute: notImplemented },
+    speak: { execute: notImplemented },
     ...overrides,
   };
 }
@@ -107,6 +108,19 @@ describe('useActions — surface d’action', () => {
     }
     expect(dispatch).toHaveBeenCalledWith(expect.objectContaining({ type: 'session/answered' }));
     expect(screen.getByRole('alert')).toHaveTextContent('Sauvegarde impossible');
+  });
+
+  it('speak délègue au cas d’usage de synthèse vocale', () => {
+    const execute = vi.fn(() => Promise.resolve({ ok: true } as const));
+    const useCases = useCasesDouble({ speak: { execute } });
+    const harness = createUiHarness();
+    const { result } = renderActions(useCases, harness);
+
+    act(() => {
+      result.current.speak('Lis-moi');
+    });
+
+    expect(execute).toHaveBeenCalledWith({ text: 'Lis-moi' });
   });
 
   it('refuse une session inconnue et ne dispatche rien', () => {

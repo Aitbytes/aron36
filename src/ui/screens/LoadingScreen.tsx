@@ -9,7 +9,7 @@ export function LoadingScreen() {
   return (
     <div className={styles.centered}>
       <Spinner size="md" label={t('primitive.spinner.label')} />
-      <p className={styles.muted}>{t('shell.loading')}</p>
+      <h1 className={styles.muted}>{t('shell.loading')}</h1>
     </div>
   );
 }

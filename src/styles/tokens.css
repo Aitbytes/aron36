@@ -14,6 +14,13 @@
   --color-surface: #1c1b2e;
   --color-surface-raised: #232134;
   --color-border: #2e2c44;
+  /*
+   * Bordure de **contrôle** : contraste ≥ 3:1 sur `--color-bg`,
+   * `--color-surface` et `--color-surface-raised` (WCAG 2.2 — 1.4.11,
+   * composants d'interface). `--color-border` reste réservé aux séparateurs et
+   * conteneurs décoratifs, où la frontière n'est pas le seul indicateur.
+   */
+  --color-border-strong: #6f6b8e;
   --color-text: #ece9f7;
   --color-text-muted: #a8a2c4;
   --color-accent: #ff5e8a;

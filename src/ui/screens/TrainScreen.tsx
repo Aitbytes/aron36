@@ -3,6 +3,7 @@ import type { FormEvent, RefObject } from 'react';
 
 import { selectSessionProgress } from '@/application/store';
 import type {
+  AnswerChannel,
   ErrorSignal,
   HintKind,
   SessionItem,
@@ -88,6 +89,15 @@ const CONFIDENCE_KEYS = {
 /** Échelle complète des jugements de confiance, dans l'ordre. */
 const CONFIDENCE_RATINGS: readonly ConfidenceRating[] = [1, 2, 3, 4, 5];
 
+/** Canaux de réponse proposés avant notation (L8) : écrit ou à voix haute. */
+const CHANNELS = ['written', 'spoken'] as const satisfies readonly AnswerChannel[];
+
+/** Libellés des canaux proposés. */
+const CHANNEL_KEYS = {
+  written: 'train.channel.written',
+  spoken: 'train.channel.spoken',
+} as const satisfies Readonly<Record<(typeof CHANNELS)[number], MessageKey>>;
+
 /** Traduction du signal d'erreur du feedback correctif (L13). */
 const ERROR_KEYS = {
   none: 'train.feedback.signal.none',
@@ -109,12 +119,34 @@ function expectedAnswerText(
     : localize(answer.text);
 }
 
+/** Vrai quand le nœud (ou l'un de ses ancêtres) est une boîte de dialogue. */
+function isWithinDialog(node: EventTarget | Element | null): boolean {
+  return node instanceof Element && node.closest('[role="dialog"]') !== null;
+}
+
+/**
+ * Vrai quand le focus est dans un champ de saisie.
+ *
+ * Les raccourcis d'une lettre (`H`) ou d'une espace (`Espace`) doivent alors
+ * laisser le clavier au texte : sinon on ne pourrait plus écrire « la hache ».
+ */
+function isTextEntryTarget(node: EventTarget | null): boolean {
+  if (!(node instanceof HTMLElement)) {
+    return false;
+  }
+  if (node.isContentEditable) {
+    return true;
+  }
+  return node.tagName === 'INPUT' || node.tagName === 'TEXTAREA' || node.tagName === 'SELECT';
+}
+
 /** Signataire de soumission d'une note, partagé entre le parent et l'étape. */
 type SubmitGrade = (
   grade: ReviewGrade,
   confidence: ConfidenceRating | null,
   responseTimeMs: number,
   hintsUsed: number,
+  channel: AnswerChannel,
 ) => void;
 
 /**
@@ -132,6 +164,10 @@ export function TrainScreen() {
   const state = useAppState();
   const toast = useToast();
   const progress = useSelect(selectSessionProgress);
+  // L'affichage et `aria-valuenow` parlent du **même** numéro de question : la
+  // barre porte le cran courant (1-based, borné à `total`), pas l'index 0-based.
+  const currentQuestionNumber =
+    progress === null ? 0 : Math.min(progress.index + 1, progress.total);
 
   const session = state.session;
   const feedback = state.ui.feedback;
@@ -156,7 +192,7 @@ export function TrainScreen() {
   );
 
   const submitGrade = useCallback<SubmitGrade>(
-    (grade, confidence, responseTimeMs, hintsUsed) => {
+    (grade, confidence, responseTimeMs, hintsUsed, channel) => {
       if (session === null || item === null) {
         return;
       }
@@ -167,7 +203,7 @@ export function TrainScreen() {
         confidence: requiresConfidence ? confidence : null,
         responseTimeMs,
         hintsUsed,
-        channel: 'written',
+        channel,
       });
       if (!result.ok) {
         reportFailure(result.reason);
@@ -259,10 +295,17 @@ export function TrainScreen() {
       return undefined;
     }
     const handler = (event: KeyboardEvent): void => {
-      if (event.key === 'Enter') {
-        event.preventDefault();
-        actions.dismissFeedback();
+      if (event.key !== 'Enter') {
+        return;
       }
+      // Sous une modale (abandon, réinitialisation…), `Entrée` appartient au
+      // dialogue : elle ne doit jamais fermer le feedback ni avancer la session
+      // (revue Phase 4). On regarde l'origine **et** le focus courant.
+      if (isWithinDialog(event.target) || isWithinDialog(document.activeElement)) {
+        return;
+      }
+      event.preventDefault();
+      actions.dismissFeedback();
     };
     document.addEventListener('keydown', handler);
     return () => {
@@ -303,15 +346,15 @@ export function TrainScreen() {
         <div className={styles.sessionProgress}>
           <p className={styles.sessionProgressText}>
             {t('train.progressText', {
-              current: Math.min(progress.index + 1, progress.total),
+              current: currentQuestionNumber,
               total: progress.total,
             })}
           </p>
           <ProgressBar
-            value={progress.index}
+            value={currentQuestionNumber}
             max={progress.total}
             label={t('train.progressLabel', {
-              current: progress.index,
+              current: currentQuestionNumber,
               total: progress.total,
             })}
           />
@@ -368,6 +411,7 @@ export function TrainScreen() {
           session={session}
           item={item}
           requiresConfidence={requiresConfidence}
+          speechEnabled={state.progress.player.settings.speechEnabled}
           onSubmit={submitGrade}
           onRevealAnswer={revealAnswer}
           onRevealHint={revealHint}
@@ -400,6 +444,8 @@ interface ItemStageProps {
   readonly session: SessionState;
   readonly item: SessionItem;
   readonly requiresConfidence: boolean;
+  /** Réglage `speechEnabled` : la question est lue à la révélation si vrai. */
+  readonly speechEnabled: boolean;
   readonly onSubmit: SubmitGrade;
   readonly onRevealAnswer: () => void;
   readonly onRevealHint: () => void;
@@ -415,17 +461,21 @@ function ItemStage({
   session,
   item,
   requiresConfidence,
+  speechEnabled,
   onSubmit,
   onRevealAnswer,
   onRevealHint,
 }: ItemStageProps) {
   const t = useT();
   const localize = useLocalizedText();
+  const actions = useActions();
   const clock = useClock();
   const numberHintId = useId();
   const shownAtRef = useRef<number>(clock.now());
+  const spokenRef = useRef(false);
 
   const [confidence, setConfidence] = useState<ConfidenceRating | null>(null);
+  const [channel, setChannel] = useState<AnswerChannel>('written');
   const [answerText, setAnswerText] = useState('');
   const [numberText, setNumberText] = useState('');
   const [answerShown, setAnswerShown] = useState(false);
@@ -439,10 +489,27 @@ function ItemStage({
         confidence,
         Math.max(0, clock.now() - shownAtRef.current),
         session.revealedHints,
+        channel,
       );
     },
-    [clock, confidence, onSubmit, session.revealedHints],
+    [channel, clock, confidence, onSubmit, session.revealedHints],
   );
+
+  // L8 : la question attendue est lue **à la révélation** — jamais avant, sinon
+  // la voix donnerait la réponse. Une seule lecture par item, et aucun son
+  // pour un prétest (L18) ni pour un QCM (aucune production à lire).
+  useEffect(() => {
+    if (!revealed || item.isPretest || item.exerciseKind !== 'production') {
+      return;
+    }
+    if (spokenRef.current) {
+      return;
+    }
+    spokenRef.current = true;
+    if (speechEnabled) {
+      actions.speak(expectedAnswerText(item.expectedAnswer, t, localize));
+    }
+  }, [actions, item, localize, revealed, speechEnabled, t]);
 
   const handleReveal = useCallback(() => {
     if (requiresConfidence) {
@@ -471,6 +538,50 @@ function ItemStage({
     },
     [grade, handleReveal, item.isPretest, revealed],
   );
+
+  // Raccourcis documentés (ARCHITECTURE §11) : `Espace` révèle la réponse,
+  // `H` affiche l'indice suivant. Inactifs sous une modale, dans un champ de
+  // saisie (on doit pouvoir taper une espace ou un « h »), une fois la réponse
+  // révélée, et jamais en prétest (L18).
+  useEffect(() => {
+    const handler = (event: KeyboardEvent): void => {
+      if (event.ctrlKey || event.metaKey || event.altKey) {
+        return;
+      }
+      if (
+        isTextEntryTarget(event.target) ||
+        isWithinDialog(event.target) ||
+        isWithinDialog(document.activeElement)
+      ) {
+        return;
+      }
+      const isSpace = event.key === ' ' || event.code === 'Space';
+      if (isSpace && item.exerciseKind === 'production') {
+        if (revealed) {
+          return;
+        }
+        event.preventDefault();
+        handleReveal();
+        return;
+      }
+      if (event.key === 'h' || event.key === 'H') {
+        const canRevealHint =
+          !revealed &&
+          !item.isPretest &&
+          item.hints.length > 0 &&
+          session.revealedHints < item.hints.length;
+        if (!canRevealHint) {
+          return;
+        }
+        event.preventDefault();
+        onRevealHint();
+      }
+    };
+    document.addEventListener('keydown', handler);
+    return () => {
+      document.removeEventListener('keydown', handler);
+    };
+  }, [handleReveal, item, onRevealHint, revealed, session.revealedHints]);
 
   // Raccourcis `1`–`4` pendant la notation.
   useEffect(() => {
@@ -506,11 +617,20 @@ function ItemStage({
         </div>
       ) : null}
 
-      <HintsPanel
-        hints={item.hints}
-        revealedHints={session.revealedHints}
-        onReveal={onRevealHint}
-      />
+      {revealed ? null : item.isPretest ? (
+        // L18 : un prétest ne s'aide pas — aucun indice, sinon la « devinette »
+        // n'en serait plus une (et `full-answer` donnerait la réponse).
+        <p className={styles.muted}>{t('train.pretest.noHints')}</p>
+      ) : (
+        // Les indices ne sont proposés qu'en phase `asking` : une fois la
+        // réponse affichée, « Révéler un indice » n'aurait plus de sens et
+        // renverrait une erreur trompeuse (revue Phase 4).
+        <HintsPanel
+          hints={item.hints}
+          revealedHints={session.revealedHints}
+          onReveal={onRevealHint}
+        />
+      )}
 
       {requiresConfidence && !revealed ? (
         <section className={styles.confidence} aria-labelledby="confidence-title">
@@ -551,6 +671,9 @@ function ItemStage({
           <h2 id="options-title" className={styles.stepTitle}>
             {t('train.discrimination.title')}
           </h2>
+          <p>
+            <Chip tone="accent">{t('train.discrimination.badge')}</Chip>
+          </p>
           <Stack gap={3}>
             {item.options.map((option) => (
               <Button
@@ -573,6 +696,23 @@ function ItemStage({
             <span className={styles.label}>{t('train.feedback.mentalImage')}</span>{' '}
             {localize(item.mentalImage)}
           </p>
+          <fieldset className={styles.channel}>
+            <legend className={styles.label}>{t('train.channel.title')}</legend>
+            <Inline gap={2} wrap>
+              {CHANNELS.map((option) => (
+                <Button
+                  key={option}
+                  type="button"
+                  variant={channel === option ? 'primary' : 'secondary'}
+                  aria-pressed={channel === option}
+                  onClick={() => setChannel(option)}
+                >
+                  {t(CHANNEL_KEYS[option])}
+                </Button>
+              ))}
+            </Inline>
+            <p className={styles.muted}>{t('train.channel.hint')}</p>
+          </fieldset>
           <div className={styles.grades}>
             <h2 className={styles.stepTitle}>{t('train.grade.title')}</h2>
             <Inline gap={3} wrap>
@@ -618,6 +758,7 @@ function ItemStage({
               {t('train.reveal')}
             </Button>
           </div>
+          <p className={styles.shortcut}>{t('train.shortcuts.asking')}</p>
         </form>
       )}
     </Card>

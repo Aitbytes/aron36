@@ -1,8 +1,9 @@
 import { levelCalculator, LEVEL_CURVE } from '@/domain/gamification';
-import type { LevelState, StreakState } from '@/domain/gamification/types';
+import type { LevelState, PlayerMetrics, StreakState } from '@/domain/gamification/types';
 import { masteryEvaluator } from '@/domain/mastery';
 import { DEFAULT_MASTERY_CRITERIA } from '@/domain/mastery/types';
-import { QUESTIONS_PER_ACT } from '@/domain/shared/types';
+import type { SessionLog } from '@/domain/session/types';
+import { DRILL_DIRECTIONS, QUESTIONS_PER_ACT } from '@/domain/shared/types';
 import type { EpochMs, Ratio } from '@/domain/shared/types';
 
 import type { AppScreen, AppState, FeedbackState } from './types';
@@ -121,4 +122,47 @@ export function selectActiveScreen(state: AppState): AppScreen {
 /** Feedback courant (réponse + correction), ou `null` avant révélation. */
 export function selectFeedback(state: AppState): FeedbackState | null {
   return state.ui.feedback;
+}
+
+/**
+ * Précision globale : moyenne des précisions **déjà calculées par le domaine**
+ * par direction, pondérée par leurs tentatives respectives.
+ *
+ * Aucun crédit n'est recalculé ; `null` quand aucune production n'existe. Cette
+ * projection pure vivait dans `StatsScreen` sous le commentaire « aucune règle
+ * métier ici » (revue Phase 4) : elle est déplacée ici, avec les autres
+ * sélecteurs, pour que l'écran ne fasse plus que formater.
+ */
+export function selectWeightedAccuracy(metrics: PlayerMetrics): number | null {
+  let attempts = 0;
+  let weighted = 0;
+  for (const direction of DRILL_DIRECTIONS) {
+    const directionMetrics = metrics.answersByDirection[direction];
+    attempts += directionMetrics.attempts;
+    weighted += directionMetrics.accuracy * directionMetrics.attempts;
+  }
+  return attempts === 0 ? null : weighted / attempts;
+}
+
+/**
+ * Meilleur Grand Oral mesuré (précision maximale, puis durée minimale).
+ *
+ * Même projection que la couche application : le domaine reçoit ce résultat en
+ * entrée car il ne peut pas le déduire des journaux. Aucune règle de notation.
+ */
+export function selectBestOralExam(
+  logs: readonly SessionLog[],
+): { readonly durationMs: number; readonly accuracy: number } | null {
+  const orals = logs
+    .filter((log) => log.mode === 'grand-oral')
+    .map((log) => ({ durationMs: log.durationMs, accuracy: log.accuracy }));
+  if (orals.length === 0) {
+    return null;
+  }
+  return orals.reduce((best, candidate) =>
+    candidate.accuracy > best.accuracy ||
+    (candidate.accuracy === best.accuracy && candidate.durationMs < best.durationMs)
+      ? candidate
+      : best,
+  );
 }

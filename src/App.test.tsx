@@ -28,7 +28,11 @@ describe('composition racine', () => {
   it('affiche l’écran de chargement tant que la progression n’est pas hydratée', () => {
     renderApp(createUiHarness({ ready: false }));
 
-    expect(screen.getByText('Chargement de votre progression…')).toBeInTheDocument();
+    expect(screen.getByText('Chargement de ta progression…')).toBeInTheDocument();
+    // L'écran de chargement porte lui-même le `<h1>` (un seul par écran).
+    expect(
+      screen.getByRole('heading', { level: 1, name: 'Chargement de ta progression…' }),
+    ).toBeInTheDocument();
     expect(screen.queryByRole('heading', { level: 1, name: 'Accueil' })).toBeNull();
   });
 });

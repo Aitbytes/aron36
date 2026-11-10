@@ -65,7 +65,7 @@
   font: inherit;
   text-align: center;
   background: var(--color-surface-raised);
-  border: 2px solid var(--color-border);
+  border: 2px solid var(--color-border-strong);
   border-radius: var(--radius-md);
   cursor: pointer;
 }

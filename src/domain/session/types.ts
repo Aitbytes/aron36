@@ -237,6 +237,12 @@ export interface SessionRequest {
   readonly maxItems?: number;
   readonly maxDurationMs?: DurationMs;
   readonly directions?: readonly DrillDirection[];
+  /**
+   * Force (ou désactive) le jugement de confiance avant révélation (L12).
+   * Absent, le défaut du mode s'applique ; la couche application le renseigne
+   * depuis le réglage `confidencePromptEnabled` du joueur.
+   */
+  readonly requiresConfidence?: boolean;
 }
 
 /** Dépendances pures nécessaires à la construction d'un plan. */

@@ -136,6 +136,12 @@ export interface AppActions {
 
   // Lecture déléguée au domaine (maîtrise) pour l'affichage.
   evaluateMastery(): ActionResult<MasterySnapshot>;
+
+  /**
+   * Synthèse vocale (L8). Neutre si le réglage est coupé ou si aucune voix
+   * n'est disponible : la lecture n'est jamais bloquante et ne lève jamais.
+   */
+  speak(text: string): void;
 }
 
 /** Construit la surface d'action (pure : aucune dépendance React). */
@@ -354,6 +360,12 @@ export function createAppActions(deps: AppActionsDeps): AppActions {
       } catch (error) {
         return failure(error);
       }
+    },
+
+    speak(text) {
+      // Volontairement « fire-and-forget » : aucune lecture ne doit bloquer une
+      // note ni faire échouer l'écran de jeu.
+      void useCases.speak.execute({ text });
     },
   };
 }

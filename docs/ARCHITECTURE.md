@@ -832,8 +832,9 @@ global dans `vitest.config.ts`, mais la cible domaine est contractuelle.
 Cible : **WCAG 2.2 niveau AA**.
 
 - **Clavier** : tout est atteignable et activable sans souris. Raccourcis
-  documentés et désactivables : `Espace` révéler, `1`–`4` noter, `H` indice,
-  `Échap` quitter. Aucun raccourci n'est le seul moyen d'agir.
+  documentés à l'écran : `Espace` révéler, `1`–`4` noter, `H` indice,
+  `Entrée` poursuivre, `Échap` quitter. Ils sont neutralisés dans les champs de
+  saisie et sous une boîte de dialogue, et aucun n'est le seul moyen d'agir.
 - **Focus** : `:focus-visible` visible (2 px, contraste ≥ 3:1), focus jamais
   masqué par un élément collant, pas de `tabindex` positif.
 - **Annonces** : feedback et changement d'item dans une région `aria-live`

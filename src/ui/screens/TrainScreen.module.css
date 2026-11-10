@@ -89,7 +89,7 @@
   inline-size: 100%;
   min-block-size: var(--target-min-size);
   padding-inline: var(--space-3);
-  border: 1px solid var(--color-border);
+  border: 1px solid var(--color-border-strong);
   border-radius: var(--radius-sm);
   background: var(--color-surface-raised);
   color: var(--color-text);
@@ -110,7 +110,7 @@
   inline-size: 100%;
   min-block-size: calc(var(--target-min-size) * 2);
   padding: var(--space-3);
-  border: 1px solid var(--color-border);
+  border: 1px solid var(--color-border-strong);
   border-radius: var(--radius-sm);
   background: var(--color-surface-raised);
   color: var(--color-text);
@@ -175,6 +175,11 @@
 }
 
 .confidence {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.channel {
   display: grid;
   gap: var(--space-2);
 }

@@ -1,13 +1,22 @@
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import { makeDueCard, makeProgress } from '@/application/store/test-fixtures';
 import { UseCaseRejection } from '@/application/usecases';
 import type { UseCases } from '@/application/usecases';
+import { findSeedStartingWithDiscrimination } from '@/application/usecases/test-doubles';
+import { QUESTION_CATALOG } from '@/domain/questions';
 import { sessionBuilder, sessionEngine } from '@/domain/session';
 import { makeContext, makeRequest } from '@/domain/session/test-fixtures';
-import type { SessionItem, SessionState, SessionSummary } from '@/domain/session/types';
+import type { QuestionId } from '@/domain/shared/types';
+import type { CardState } from '@/domain/srs/types';
+import type {
+  AnswerChannel,
+  SessionItem,
+  SessionState,
+  SessionSummary,
+} from '@/domain/session/types';
 import type { DrillDirection, ReviewGrade } from '@/domain/shared/types';
 import { createUiHarness, TestProviders } from '@/test/uiHarness';
 import type { UiHarness } from '@/test/uiHarness';
@@ -58,6 +67,48 @@ function directionState(direction: DrillDirection): SessionState {
   return sessionEngine.start(built.plan, FIXTURE_NOW);
 }
 
+/** Session dont le premier item est un QCM (drill de reconnaissance, L1). */
+function discriminationState(): SessionState {
+  const cards = new Map<QuestionId, CardState>();
+  for (let questionId = 1; questionId <= 12; questionId += 1) {
+    cards.set(questionId, {
+      questionId,
+      phase: 'review',
+      dueAt: 0,
+      intervalDays: 3,
+      stabilityDays: 3,
+      learningStep: 0,
+      difficulty: 5,
+      reps: 3,
+      lapses: 0,
+      consecutiveSuccesses: 2,
+      lastReviewedAt: 0,
+      lastGrade: 'good',
+    });
+  }
+  const built = sessionBuilder.build(
+    makeRequest({
+      mode: 'learning',
+      sessionId: 'discrimination-ui',
+      seed: findSeedStartingWithDiscrimination(),
+      now: FIXTURE_NOW,
+      maxItems: 5,
+    }),
+    {
+      catalog: QUESTION_CATALOG,
+      cards,
+      hooks: [],
+      recentLogs: [],
+      unlockedActIds: [1],
+      masteredActIds: [],
+    },
+  );
+  if (!built.ok) {
+    throw new Error(`plan de discrimination invalide : ${built.failure}`);
+  }
+  return sessionEngine.start(built.plan, FIXTURE_NOW);
+}
+
 function plantState(harness: UiHarness, state: SessionState): void {
   harness.store.dispatch({ type: 'session/started', state });
   harness.store.dispatch({ type: 'ui/navigate', screen: 'train' });
@@ -88,7 +139,7 @@ describe('TrainScreen — rendu des directions de drill', () => {
 
     expect(screen.getByText('Acte 3, position 1')).toBeInTheDocument();
     expect(screen.queryByText('Question 25')).toBeNull();
-    expect(screen.getByLabelText('Votre réponse').tagName).toBe('TEXTAREA');
+    expect(screen.getByLabelText('Ta réponse').tagName).toBe('TEXTAREA');
   });
 
   it('keyword : met en avant le mot-clé et propose la saisie libre', () => {
@@ -98,7 +149,7 @@ describe('TrainScreen — rendu des directions de drill', () => {
 
     expect(screen.getByText('Mot-clé')).toBeInTheDocument();
     expect(screen.getByText('mot-cle-25')).toBeInTheDocument();
-    expect(screen.getByLabelText('Votre réponse').tagName).toBe('TEXTAREA');
+    expect(screen.getByLabelText('Ta réponse').tagName).toBe('TEXTAREA');
   });
 
   it('image : présente l’image mentale et propose la saisie libre', () => {
@@ -108,7 +159,7 @@ describe('TrainScreen — rendu des directions de drill', () => {
 
     expect(screen.getByText('Image mentale')).toBeInTheDocument();
     expect(screen.getByText('image mentale 25')).toBeInTheDocument();
-    expect(screen.getByLabelText('Votre réponse').tagName).toBe('TEXTAREA');
+    expect(screen.getByLabelText('Ta réponse').tagName).toBe('TEXTAREA');
   });
 
   it('number : affiche « Question 25 » et propose la saisie libre', () => {
@@ -117,7 +168,7 @@ describe('TrainScreen — rendu des directions de drill', () => {
     renderTrain(harness);
 
     expect(screen.getByText('Question 25')).toBeInTheDocument();
-    expect(screen.getByLabelText('Votre réponse').tagName).toBe('TEXTAREA');
+    expect(screen.getByLabelText('Ta réponse').tagName).toBe('TEXTAREA');
   });
 
   it('question : affiche l’énoncé, la consigne et un champ numérique', () => {
@@ -129,6 +180,20 @@ describe('TrainScreen — rendu des directions de drill', () => {
     expect(screen.getByText('Quel numéro ?')).toBeInTheDocument();
     expect(screen.getByLabelText('Numéro de la question')).toHaveAttribute('type', 'number');
     expect(screen.getByLabelText('Numéro de la question')).toHaveAttribute('inputmode', 'numeric');
+  });
+});
+
+describe('TrainScreen — QCM explicitement étiqueté', () => {
+  it('annonce un drill de reconnaissance, pas une simple question', () => {
+    const harness = createUiHarness();
+    plantState(harness, discriminationState());
+    renderTrain(harness);
+
+    expect(firstItem(harness).exerciseKind).toBe('discrimination');
+    expect(
+      screen.getByRole('heading', { name: 'Reconnaissance : choisis la bonne question' }),
+    ).toBeInTheDocument();
+    expect(screen.getByText('Drill de reconnaissance')).toBeInTheDocument();
   });
 });
 
@@ -154,6 +219,34 @@ describe('TrainScreen — indices progressifs', () => {
     expect(screen.getByText('Tous les indices sont révélés.')).toBeInTheDocument();
   });
 
+  it('masque les indices dès que la réponse est révélée', async () => {
+    const user = userEvent.setup();
+    const harness = createUiHarness();
+    startSession(harness, { mode: 'learning', questionIds: [7], maxItems: 1 });
+    renderTrain(harness);
+
+    expect(screen.getByRole('button', { name: 'Révéler un indice' })).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Voir la réponse' }));
+
+    expect(screen.queryByRole('heading', { name: 'Indices' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Révéler un indice' })).toBeNull();
+  });
+
+  it('masque les indices après une révélation locale (confiance requise)', async () => {
+    const user = userEvent.setup();
+    const harness = createUiHarness({
+      progress: makeProgress({ cards: { '7': makeDueCard(7, 0) } }),
+    });
+    startSession(harness, { mode: 'review', questionIds: [7], maxItems: 1 });
+    renderTrain(harness);
+
+    await user.click(screen.getByRole('button', { name: '3 — moyen' }));
+    await user.click(screen.getByRole('button', { name: 'Voir la réponse' }));
+
+    expect(screen.queryByRole('heading', { name: 'Indices' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Révéler un indice' })).toBeNull();
+  });
+
   it('n’affiche aucun bouton quand l’item n’a pas d’indice', () => {
     const harness = createUiHarness({ progress: makeProgress() });
     startSession(harness, { mode: 'grand-oral', questionIds: [7], maxItems: 1 });
@@ -177,7 +270,7 @@ describe('TrainScreen — confiance (L12)', () => {
     const reveal = screen.getByRole('button', { name: 'Voir la réponse' });
     expect(reveal).toBeDisabled();
     expect(
-      screen.getByText('Choisissez un niveau de confiance avant de pouvoir révéler la réponse.'),
+      screen.getByText('Choisis un niveau de confiance avant de pouvoir révéler la réponse.'),
     ).toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: '3 — moyen' }));
@@ -191,6 +284,45 @@ describe('TrainScreen — confiance (L12)', () => {
 
     const logs = harness.store.getState().progress.reviewLogs;
     expect(logs.at(-1)?.confidence).toBe(3);
+  });
+});
+
+describe('TrainScreen — synthèse vocale (L8)', () => {
+  it('lit la question attendue à la révélation, jamais avant', async () => {
+    const user = userEvent.setup();
+    const harness = createUiHarness();
+    startSession(harness, { mode: 'learning', questionIds: [7], maxItems: 1 });
+    const item = firstItem(harness);
+    const expected =
+      item.expectedAnswer.kind === 'question'
+        ? item.expectedAnswer.text.fr
+        : `Question ${String(item.expectedAnswer.questionNumber)}`;
+    const speak = vi.fn((_input: { readonly text: string }) =>
+      Promise.resolve({ ok: true } as const),
+    );
+    const useCases: UseCases = { ...harness.useCases, speak: { execute: speak } };
+    renderTrain(harness, useCases);
+
+    expect(speak).not.toHaveBeenCalled();
+    await user.click(screen.getByRole('button', { name: 'Voir la réponse' }));
+
+    expect(speak).toHaveBeenCalledTimes(1);
+    expect(speak.mock.calls[0]?.[0]).toEqual({ text: expected });
+  });
+
+  it('ne lit rien pour un prétest, jamais corrigé (L18)', async () => {
+    const user = userEvent.setup();
+    const harness = createUiHarness({ progress: makeProgress() });
+    startSession(harness, { mode: 'discovery', questionIds: [7], maxItems: 1 });
+    const speak = vi.fn((_input: { readonly text: string }) =>
+      Promise.resolve({ ok: true } as const),
+    );
+    const useCases: UseCases = { ...harness.useCases, speak: { execute: speak } };
+    renderTrain(harness, useCases);
+
+    await user.click(screen.getByRole('button', { name: 'Valider ma devinette' }));
+
+    expect(speak).not.toHaveBeenCalled();
   });
 });
 
@@ -215,9 +347,13 @@ describe('TrainScreen — notation (L12/L13)', () => {
     startSession(harness, { mode: 'learning', questionIds: [7, 8], maxItems: 2 });
     renderTrain(harness);
 
-    expect(
-      screen.getByRole('progressbar', { name: 'Progression de la session : 0 sur 2' }),
-    ).toBeInTheDocument();
+    const firstBar = screen.getByRole('progressbar', {
+      name: 'Progression de la session : 1 sur 2',
+    });
+    // Le texte et la barre portent le même numéro de question (a11y) : au cran
+    // 1, `aria-valuenow` vaut 1, plus 0.
+    expect(firstBar).toHaveAttribute('aria-valuenow', '1');
+    expect(firstBar).toHaveAttribute('aria-valuetext', '50 %');
     await user.click(screen.getByRole('button', { name: 'Voir la réponse' }));
     await user.click(screen.getByRole('button', { name: GRADE_LABELS.good }));
 
@@ -225,9 +361,10 @@ describe('TrainScreen — notation (L12/L13)', () => {
     await user.click(screen.getByRole('button', { name: 'Continuer' }));
 
     expect(screen.queryByRole('heading', { name: 'Correction' })).toBeNull();
-    expect(
-      screen.getByRole('progressbar', { name: 'Progression de la session : 1 sur 2' }),
-    ).toBeInTheDocument();
+    const secondBar = screen.getByRole('progressbar', {
+      name: 'Progression de la session : 2 sur 2',
+    });
+    expect(secondBar).toHaveAttribute('aria-valuenow', '2');
   });
 });
 
@@ -250,6 +387,19 @@ describe('TrainScreen — prétest (L18)', () => {
     expect(screen.queryByRole('heading', { name: 'Correction' })).toBeNull();
     expect(screen.queryByText('Réponse attendue')).toBeNull();
   });
+
+  it('n’expose aucun indice en prétest, même quand le plan en construit', () => {
+    const harness = createUiHarness({ progress: makeProgress() });
+    startSession(harness, { mode: 'discovery', questionIds: [7], maxItems: 1 });
+    renderTrain(harness);
+
+    // Le plan en porte (politique progressive) mais l'écran ne doit pas les
+    // offrir : sinon `full-answer` donnerait la réponse du prétest.
+    expect(firstItem(harness).hints.length).toBeGreaterThan(0);
+    expect(screen.queryByRole('heading', { name: 'Indices' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Révéler un indice' })).toBeNull();
+    expect(screen.getByText('Aucun indice en prétest : devine de mémoire.')).toBeInTheDocument();
+  });
 });
 
 describe('TrainScreen — abandon', () => {
@@ -267,6 +417,73 @@ describe('TrainScreen — abandon', () => {
     expect(screen.queryByRole('dialog')).toBeNull();
     expect(harness.store.getState().session).toBeNull();
     expect(harness.store.getState().ui.screen).toBe('home');
+  });
+});
+
+describe('TrainScreen — raccourcis documentés (ARCHITECTURE §11)', () => {
+  it('Espace révèle la réponse et H affiche un indice', async () => {
+    const user = userEvent.setup();
+    const harness = createUiHarness();
+    startSession(harness, { mode: 'learning', questionIds: [7], maxItems: 1 });
+    renderTrain(harness);
+
+    await user.keyboard('h');
+    expect(screen.getByText('Indices utilisés : 1')).toBeInTheDocument();
+
+    await user.keyboard(' ');
+    expect(screen.getByRole('heading', { name: 'Réponse attendue' })).toBeInTheDocument();
+  });
+
+  it('laisse le clavier au texte dans un champ de saisie', async () => {
+    const user = userEvent.setup();
+    const harness = createUiHarness();
+    startSession(harness, { mode: 'learning', questionIds: [7], maxItems: 1 });
+    renderTrain(harness);
+
+    const textarea = screen.getByLabelText('Ta réponse');
+    await user.click(textarea);
+    await user.keyboard('h');
+    await user.keyboard(' ');
+
+    expect(textarea).toHaveValue('h ');
+    expect(screen.queryByRole('heading', { name: 'Réponse attendue' })).toBeNull();
+    expect(screen.queryByText('Indices utilisés : 1')).toBeNull();
+  });
+
+  it('H reste inerte une fois la réponse révélée', async () => {
+    const user = userEvent.setup();
+    const harness = createUiHarness();
+    startSession(harness, { mode: 'learning', questionIds: [7], maxItems: 1 });
+    renderTrain(harness);
+
+    await user.keyboard(' ');
+    expect(screen.getByRole('heading', { name: 'Réponse attendue' })).toBeInTheDocument();
+
+    await user.keyboard('h');
+    expect(screen.queryByRole('heading', { name: 'Indices' })).toBeNull();
+  });
+});
+
+describe('TrainScreen — raccourci Entrée et modale', () => {
+  it('ignore Entrée quand la boîte d’abandon est ouverte', async () => {
+    const user = userEvent.setup();
+    const harness = createUiHarness();
+    startSession(harness, { mode: 'learning', questionIds: [7, 8], maxItems: 2 });
+    renderTrain(harness);
+
+    await user.click(screen.getByRole('button', { name: 'Voir la réponse' }));
+    await user.click(screen.getByRole('button', { name: GRADE_LABELS.good }));
+    expect(screen.getByRole('heading', { name: 'Correction' })).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Abandonner' }));
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+
+    await user.keyboard('{Enter}');
+
+    // `Entrée` aurait refermé le feedback et fait avancer la session : sous la
+    // modale, le raccourci global est neutralisé.
+    expect(harness.store.getState().ui.feedback).not.toBeNull();
+    expect(screen.getByRole('heading', { name: 'Correction' })).toBeInTheDocument();
   });
 });
 
@@ -298,6 +515,57 @@ describe('TrainScreen — refus', () => {
     ).toBeGreaterThan(0);
     // La notation reste disponible : la session n’est pas cassée.
     expect(screen.getByRole('button', { name: GRADE_LABELS.hard })).toBeEnabled();
+  });
+});
+
+describe('TrainScreen — canal de réponse (L8)', () => {
+  it('propose écrit / à voix haute après révélation et transmet le canal', async () => {
+    const user = userEvent.setup();
+    const harness = createUiHarness();
+    startSession(harness, { mode: 'learning', questionIds: [7], maxItems: 1 });
+    const channels: AnswerChannel[] = [];
+    const useCases: UseCases = {
+      ...harness.useCases,
+      submitAnswer: {
+        execute: (input) => {
+          channels.push(input.channel);
+          return harness.useCases.submitAnswer.execute(input);
+        },
+      },
+    };
+    renderTrain(harness, useCases);
+
+    // Le canal n'est demandé qu'à la notation, pas pendant la réponse.
+    expect(screen.queryByRole('button', { name: 'À voix haute' })).toBeNull();
+    await user.click(screen.getByRole('button', { name: 'Voir la réponse' }));
+
+    await user.click(screen.getByRole('button', { name: 'À voix haute' }));
+    await user.click(screen.getByRole('button', { name: GRADE_LABELS.good }));
+
+    expect(channels).toEqual(['spoken']);
+    expect(harness.store.getState().session?.answers[0]?.channel).toBe('spoken');
+  });
+
+  it('déclare « par écrit » par défaut, sans choix explicite', async () => {
+    const user = userEvent.setup();
+    const harness = createUiHarness();
+    startSession(harness, { mode: 'learning', questionIds: [7], maxItems: 1 });
+    const channels: AnswerChannel[] = [];
+    const useCases: UseCases = {
+      ...harness.useCases,
+      submitAnswer: {
+        execute: (input) => {
+          channels.push(input.channel);
+          return harness.useCases.submitAnswer.execute(input);
+        },
+      },
+    };
+    renderTrain(harness, useCases);
+
+    await user.click(screen.getByRole('button', { name: 'Voir la réponse' }));
+    await user.click(screen.getByRole('button', { name: GRADE_LABELS.good }));
+
+    expect(channels).toEqual(['written']);
   });
 });
 
