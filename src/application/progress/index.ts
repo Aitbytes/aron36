@@ -1,3 +1,8 @@
+import type { ProgressCodec } from '@/domain/progress/types';
+
+/** Fabrique de codec (injectable par les tests et la composition racine). */
+export type ProgressCodecFactory = () => ProgressCodec;
+
 /**
  * Persistance applicative : codec, migrations, chargement, sauvegarde.
  *

@@ -14,10 +14,11 @@ import { createInitialAppState } from '@/application/store';
 import type { AppState } from '@/application/store';
 
 import { readPersistedProgress, writeProgress } from './usecases/progress-loader';
-import type { ProgressCodecFactory, ProgressCodecLike } from './usecases/codec';
+import { progressCodec } from '@/application/progress';
+import type { ProgressCodecFactory } from '@/application/progress';
 import type { AppServices } from './usecases/types';
 
-export type { ProgressCodecFactory, ProgressCodecLike } from './usecases/codec';
+export type { ProgressCodecFactory } from '@/application/progress';
 
 /**
  * Amorçage applicatif (Phase 3-C).
@@ -134,10 +135,10 @@ export interface HydrateResult {
  */
 export function hydrate(
   services: AppServices,
-  createCodec: ProgressCodecFactory,
+  createCodec: ProgressCodecFactory = () => progressCodec,
   locale: LocaleCode = 'fr',
 ): HydrateResult {
-  const codec: ProgressCodecLike = createCodec();
+  const codec = createCodec();
   const read = readPersistedProgress(services, codec);
   switch (read.result.status) {
     case 'loaded':

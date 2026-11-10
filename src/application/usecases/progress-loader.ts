@@ -1,7 +1,11 @@
 import { STORAGE_KEY } from '@/domain/progress/types';
-import type { ProgressError, ProgressLoadResult, PersistedProgress } from '@/domain/progress/types';
+import type {
+  PersistedProgress,
+  ProgressCodec,
+  ProgressError,
+  ProgressLoadResult,
+} from '@/domain/progress/types';
 import type { AppServices } from './types';
-import type { ProgressCodecLike } from './codec';
 
 /**
  * Lecture et écriture de la progression persistée.
@@ -23,7 +27,7 @@ export interface PersistedProgressRead {
 /** Lit la progression sans jamais écrire ni supprimer. */
 export function readPersistedProgress(
   services: AppServices,
-  codec: ProgressCodecLike,
+  codec: ProgressCodec,
 ): PersistedProgressRead {
   const read = services.storage.read(STORAGE_KEY);
   if (!read.ok) {
@@ -82,7 +86,7 @@ function futureVersionOf(error: ProgressError): number {
  */
 export function writeProgress(
   services: AppServices,
-  codec: ProgressCodecLike,
+  codec: ProgressCodec,
   progress: PersistedProgress,
 ): ProgressError | null {
   const encoded = codec.encode(progress);

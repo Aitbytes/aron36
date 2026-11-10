@@ -40,7 +40,8 @@ import { createProgressRepository } from './progress-repository';
 import type { ProgressRepository } from './progress-repository';
 import { resolveSessionWindow } from './session-window';
 import { buildSessionSummary, tallySession } from './summary';
-import type { ProgressCodecFactory } from './codec';
+import { progressCodec } from '@/application/progress';
+import type { ProgressCodecFactory } from '@/application/progress';
 import type {
   AppServices,
   EvaluateMasteryOutput,
@@ -90,7 +91,10 @@ interface SessionRun {
 const RECENT_LOGS_WINDOW = 200;
 
 /** Crée les 8 cas d'usage liés aux services et au codec injectés. */
-export function createUseCases(services: AppServices, createCodec: ProgressCodecFactory): UseCases {
+export function createUseCases(
+  services: AppServices,
+  createCodec: ProgressCodecFactory = () => progressCodec,
+): UseCases {
   const codec = createCodec();
   const repository: ProgressRepository = createProgressRepository(services, codec, (locale) =>
     createInitialProgress(services, locale),
