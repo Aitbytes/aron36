@@ -1,4 +1,3 @@
-import { MAX_REVIEW_LOG_ENTRIES, MAX_SESSION_LOG_ENTRIES } from '@/domain/progress/types';
 import type { PersistedProgress } from '@/domain/progress/types';
 import type { HookLibrary } from '@/domain/memory/types';
 
@@ -14,28 +13,25 @@ import type { AppAction, AppState, UiState } from './types';
  *   `Math.random()`, pas de stockage — tout instant utile arrive **dans
  *   l'action**, calculé par le cas d'usage via `ClockPort`.
  *
- * Choix documentés par cas (voir aussi la PR Phase 3-B et la PR Phase 3-C) :
- * - `session/answered` applique les deltas de progression dérivables de
- *   l'action (XP, carte SRS suivante, journal de révision **porté par
- *   l'action**) et laisse `savedAt` intact : c'est le cas d'usage qui écrit,
- *   via `progress/saved`. Le journal n'est pas dérivé ici : son `id` provient
- *   de `IdPort.newReviewLogId()` (espace d'identifiants distinct de
- *   `SessionAnswer.itemId`) et les prétests (L18) n'en produisent aucun —
- *   l'action porte alors `reviewLog: null` ;
- * - `session/completed` conserve `session` (phase `completed`, matière de
- *   l'écran de bilan) et ramène `ui.screen` à `'home'` : une session finie ne
- *   peut pas piéger l'utilisateur sur l'écran d'entraînement, et
- *   `session/started` ou `session/abandoned` la remplaceront ;
- * - `session/completed` reçoit le `SessionLog` **déjà fabriqué** par le cas
- *   d'usage `finishSession` — le champ `SessionLog.window` (L17) se calcule
- *   depuis l'heure **locale** de `ClockPort`, que le réducteur ne possède pas —
- *   et l'ajoute à `progress.sessionLogs` : sans ce raccordement, les métriques
- *   `eveningSessions`/`morningSessions`/`perfectSessions`, la quête
- *   `revision-du-soir` et plusieurs badges de production resteraient à zéro ;
- * - `progress/reset` et `progress/replaced` sont des chemins de
- *   **récupération** (donnée corrompue ou import) : ils purgent `lastError` ;
- *   `reset` retire en plus la session courante, dont les items référencent
- *   des cartes remplacées par des cartes neuves.
+ * Décision d'architecture (revue Phase 3, non négociable) : **la progression
+ * `PersistedProgress` a un seul propriétaire — les cas d'usage**. Le store ne
+ * la calcule jamais, il la **reçoit** : `session/answered` et
+ * `session/completed` portent l'état complet produit (et déjà persisté) par le
+ * cas d'usage, et le réducteur l'installe tel quel. Il n'y dérive plus rien :
+ * ni carte SRS, ni `ReviewLog`, ni XP, ni quête, ni série, ni badge, ni
+ * collection — la divergence store/persisté observée en revue (streak, badges,
+ * quêtes, collection) devient structurellement impossible.
+ *
+ * Choix documentés par cas :
+ * - `session/answered` / `session/completed` : voir ci-dessus ; `xp` ne sert
+ *   qu'à l'affichage (déjà créditée dans `progress`) ; `session/completed`
+ *   conserve `session` (phase `completed`, matière de l'écran de bilan) et
+ *   ramène `ui.screen` à `'home'` : une session finie ne peut pas piéger
+ *   l'utilisateur sur l'écran d'entraînement, et `session/started`,
+ *   `session/abandoned` ou les chemins de récupération la remplaceront ;
+ * - `progress/reset` est un chemin de **récupération** : il purge `lastError`
+ *   et retire la session courante, dont les items référencent des cartes
+ *   remplacées par des cartes neuves.
  */
 
 /** Erreur de compilation si une variante d'`AppAction` venait à manquer. */
@@ -63,40 +59,6 @@ function upsertHook(library: HookLibrary, hook: HookLibrary['hooks'][number]): H
   return {
     hooks: [...remaining, hook],
     updatedAt: Math.max(library.updatedAt, hook.updatedAt),
-  };
-}
-
-/**
- * `session/answered` : XP, carte SRS suivante, journal de révision —
- * tronqués aux limites de persistance et sans toucher à `savedAt`.
- *
- * Le journal arrive **déjà fabriqué** dans l'action (`action.reviewLog`, avec
- * son `id` issu de `IdPort`) : `null` pour un prétest (L18), jamais journalisé.
- */
-function applyAnswerToProgress(
-  state: AppState,
-  action: Extract<AppAction, { type: 'session/answered' }>,
-): PersistedProgress {
-  const reviewLogs =
-    action.reviewLog === null
-      ? state.progress.reviewLogs
-      : [...state.progress.reviewLogs, action.reviewLog].slice(-MAX_REVIEW_LOG_ENTRIES);
-  const cards =
-    action.scheduledReview === null
-      ? state.progress.cards
-      : {
-          ...state.progress.cards,
-          [action.scheduledReview.nextCard.questionId]: action.scheduledReview.nextCard,
-        };
-
-  return {
-    ...state.progress,
-    cards,
-    reviewLogs,
-    player: {
-      ...state.progress.player,
-      totalXp: state.progress.player.totalXp + action.xp.amount,
-    },
   };
 }
 
@@ -148,31 +110,19 @@ export function reduce(state: AppState, action: AppAction): AppState {
       return { ...state, session: action.state };
 
     case 'session/answered': {
-      const progress = applyAnswerToProgress(state, action);
+      // Source de vérité unique : `progress` vient du cas d'usage, déjà
+      // persisté ; le réducteur l'installe par référence, sans dérivation.
       return withUi(
-        { ...state, session: action.session, progress },
+        { ...state, session: action.session, progress: action.progress },
         { feedback: { answer: action.answer, feedback: action.feedback } },
       );
     }
 
     case 'session/completed':
+      // `progress` porte déjà le SessionLog et l'XP de clôture (cas d'usage).
       // `session` est conservée pour l'écran de bilan (phase `completed`) ;
-      // l'XP de fin de session est créditée et le `SessionLog` fabriqué par
-      // `finishSession` (fenêtre L17 déduite de `ClockPort` côté cas d'usage)
-      // est ajouté au journal persisté, tronqué à `MAX_SESSION_LOG_ENTRIES`.
-      return withUi(
-        withProgress(state, {
-          ...state.progress,
-          sessionLogs: [...state.progress.sessionLogs, action.sessionLog].slice(
-            -MAX_SESSION_LOG_ENTRIES,
-          ),
-          player: {
-            ...state.progress.player,
-            totalXp: state.progress.player.totalXp + action.xp.amount,
-          },
-        }),
-        { feedback: null, screen: 'home' },
-      );
+      // l'écran revient à l'accueil et le feedback s'efface.
+      return withUi({ ...state, progress: action.progress }, { feedback: null, screen: 'home' });
 
     case 'session/abandoned':
       // Abandon : la session disparaît sans journal ni pénalité (anti-objectif

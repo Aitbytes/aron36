@@ -215,6 +215,17 @@ bornes de chaque champ borné, et **tout décodage d'une donnée non fiable**
 Les cas d'usage sont l'**unique** endroit où l'on combine domaine + ports. Ils
 renvoient des résultats explicites et ne lèvent pas d'exception d'I/O.
 
+**Propriété de la progression (revue Phase 3).** `PersistedProgress` a **un seul
+propriétaire : les cas d'usage**. Le store ne la calcule jamais, il la **reçoit** :
+les actions `session/answered` et `session/completed` portent l'état complet
+produit — et déjà persisté — par le cas d'usage, et le réducteur se contente de
+l'installer (`{ ...state, progress: action.progress }`), plus la session et le
+feedback pour l'affichage. Le réducteur n'y dérive rien : ni carte SRS, ni
+`ReviewLog`, ni XP, ni quête, ni série, ni badge, ni collection. Cette décision
+supprime la divergence store/persisté observée en revue (série, badges, quêtes,
+collection restés à zéro côté store) et tout risque de double comptage avec
+`progress/replaced`, qui remplace un état absolu et reste idempotent.
+
 ### 3.3 Infrastructure et UI
 
 | Module              | Responsabilité                                                                                                    | Importe                                                | Expose                                 |
